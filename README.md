@@ -7,7 +7,7 @@ To run the code you can follow the instructions below in the order provided. If 
 
 ---
 
-## 🔁 Workflow Summary
+## Repository Structure
 
 To **run everything from scratch**, follow this order:
 
@@ -31,7 +31,7 @@ To **run everything from scratch**, follow this order:
 
 ---
 
-## 📁 Folder Structure
+## Folder for Data Structure
 
 ### `csv data/`
 Contains all cleaned datasets used or generated in the project.
@@ -53,7 +53,7 @@ Contains raw or intermediate data used in PCA or loaded in `Daten.Rmd`.
 
 ---
 
-## 💾 To Load Everything Without Running Code
+## To Load Everything Without Running Code
 
 If you don't want to rerun the full pipeline, you can:
 
@@ -61,13 +61,4 @@ If you don't want to rerun the full pipeline, you can:
 - Use the `.rds` files in `models/` to load trained models.
 - Use the plots in `plots/` for visual analysis and reporting.
 
-Example code to load a dataset and model:
-
-```r
-df_data2reg <- read.csv("csv data/df_data2reg.csv")
-rfbin_df2 <- readRDS("models/rfbin_df2.rds")
-
-This code 
-
-For the code to work without loading any data previously, you first have to run PCA.Rmd, then you have to run Daten.Rmd to have all data. To run the models you have to run rf.Rmd. For the plots you need to run plots.Rmd. 
-To load all data without running the code, you can use the csv files in the csv data folder and run them in the second chunk. The models are saved in the models folder. The plots are saved in the plots folder. The data is saved in the data folder.
+  
