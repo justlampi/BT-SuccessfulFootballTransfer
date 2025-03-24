@@ -1,0 +1,649 @@
+---
+title: "Plots"
+author: "Justin Lampman"
+date: "2025-01-22"
+output: html_document
+---
+
+For the code to work without loading any data previously, you first have to run PCA.Rmd, then you have to run Daten.Rmd to have all data. To run the models you have to run rf.Rmd. For the plots you need to run plots.Rmd. 
+To load all data without running the code, you can use the csv files in the csv data folder and run them in the second chunk. The models are saved in the models folder. The plots are saved in the plots folder. The data is saved in the data folder.
+
+pakages
+```{r}
+library(worldfootballR)
+library(tidyverse)
+library(ggrepel)
+library(stringi)
+library(stringr)
+library(worldfootballR)
+library(corrr)
+library(ggcorrplot)
+library(factoextra)
+library(purrr)
+library(vivid)
+library(reshape2)  # For data transformation
+library(viridis)
+library(scales)#for the Age_vs_Value.png plot (not scientific)
+library(ranger)
+library(Metrics)
+mapping = read.csv("csv data/names.csv")# Mapping for clubs of transfermakt data and fbref data
+```
+
+If you do not want to run the code, you can also use the csv files in the csv data folder and load these to have all the data, to run the models and get the plots
+```{r}
+pca_join_age_diff2total <- read.csv("csv data/pca.csv")
+dataa <- read_csv("csv data/dataa123.csv")%>% select(-1)
+#
+rfreg_tot_vivi2 <- read.csv("csv data/rfreg_tot_vivi2.csv")
+rfbin_tot_vivi2 <- read.csv("csv data/rfbin_tot_vivi2.csv")
+rfreg_fw_vivi2 <- read.csv("csv data/rfreg_fw_vivi2.csv")
+rfbin_fw_vivi2 <- read.csv("csv data/rfbin_fw_vivi2.csv")
+rfreg_df_vivi2 <- read.csv("csv data/rfreg_df_vivi2.csv")
+rfbin_df_vivi2 <- read.csv("csv data/rfbin_df_vivi2.csv")
+rfreg_mid_vivi2 <- read.csv("csv data/rfreg_mid_vivi2.csv")
+rfbin_mid_vivi2 <- read.csv("csv data/rfbin_mid_vivi2.csv")
+#
+data_butlook <- read_csv("csv data/data.csv")
+#
+mid_data2reg <- read.csv("csv data/mid_data2reg.csv")
+df_data2reg <- read.csv("csv data/df_data2reg.csv")
+tot_data2reg <- read.csv("csv data/vtot_data2reg.csv")
+fw_data2reg <- read.csv("csv data/fw_data2reg.csv")
+fw_data2bin <- read.csv("csv data/fw_data2bin.csv")
+mid_data2bin <- read.csv("csv data/mid_data2bin.csv")
+df_data2bin <- read.csv("csv data/df_data2bin.csv")
+tot_data2bin <- read.csv("csv data/tot_data2bin.csv")
+#
+combined_varimp_bin2 <- read.csv("csv data/combined_varimp_bin2.csv")
+combined_varimp_reg2 <- read.csv("csv data/combined_varimp_reg2.csv")
+#
+regbin <- read.csv("csv data/regbin.csv")
+#
+rfbin_tot_vivi2 <- read.csv("csv data/rfbin_tot_vivi2.csv")
+rfreg_fw_vivi2 <- read.csv("csv data/rfreg_fw_vivi2.csv")
+rfbin_fw_vivi2 <- read.csv("csv data/rfbin_fw_vivi2.csv")
+rfreg_df_vivi2 <- read.csv("csv data/rfreg_df_vivi2.csv")
+rfbin_df_vivi2 <- read.csv("csv data/rfbin_df_vivi2.csv")
+rfreg_mid_vivi2 <- read.csv("csv data/rfreg_mid_vivi2.csv")
+rfbin_mid_vivi2 <- read.csv("csv data/rfbin_mid_vivi2.csv")
+#
+train_data_df2 <- read.csv("csv data/train_data_df2.csv")
+test_data_df2 <- read.csv("csv data/test_data_df2.csv")
+test_data_fw2 <- read.csv("csv data/test_data_fw2.csv") 
+train_data_fw2 <- read.csv("csv data/train_data_fw2.csv")
+train_data_mid2 <- read.csv("csv data/train_data_mid2.csv")
+test_data_mid2 <- read.csv("csv data/test_data_mid2.csv")
+train_data_tot2 <- read.csv("csv data/train_data_tot2.csv")
+test_data_tot2 <- read.csv("csv data/test_data_tot2.csv")
+#
+df_data <- read.csv("csv data/df_data.csv")
+mid_data <- read.csv("csv data/mid_data.csv")
+fw_data <- read.csv("csv data/fw_data.csv")
+tot_data <- read.csv("csv data/tot_data.csv")
+#
+rfbin_fw2 <- readRDS("models/rfbin_fw2.rds")
+rfbin_df2 <- readRDS("models/rfbin_df2.rds")
+rfbin_mid2 <- readRDS("models/rfbin_mid2.rds")
+rfbin_tot2 <- readRDS("models/rfbin_tot2.rds")
+rfreg_fw2 <- readRDS("models/rfreg_fw2.rds")
+rfreg_df2 <- readRDS("models/rfreg_df2.rds")
+rfreg_mid2 <- readRDS("models/rfreg_mid2.rds")
+rfreg_tot2 <- readRDS("models/rfreg_tot2.rds")
+# load these for the data from Transfermarkt and Fbref
+all_val <- read.csv("csv data/all_val.csv")
+final_combined_data <- read.csv("csv data/final_combined_data.csv")
+joined_data = read.csv("csv data/team_data_pca.csv")
+```
+
+generate_pdp helper function
+```{r}
+generate_pdp <- function(model, data, features, grid_resolution = 20) {
+  
+  # Custom predict function (for models that require type = "prob")
+  predict_rf <- function(object, newdata, ...) {
+    newdata <- as.data.frame(newdata)
+    predict(object, newdata = newdata, type = "prob")[, 2]
+  }
+
+  # Compute PDPs for each feature
+  pdp_data <- lapply(features, function(var) {
+    partial(
+      object = model,
+      pred.var = var,
+      train = data,
+      grid.resolution = grid_resolution,
+      .f = predict_rf,
+      progress = "text"
+    ) %>%
+      as.data.frame() %>%
+      rename(value = 1, yhat = 2) %>%
+      mutate(value = as.numeric(value), Feature = var)
+  })
+
+  # Combine all PDP results into a single dataframe
+  pdp_df <- bind_rows(pdp_data)
+
+  # Plot 
+  ggplot(pdp_df, aes(x = value, y = yhat)) +
+    geom_line(linewidth = 1, color = "blue") +
+    labs(
+      title = "",
+      x = "Feature Value",
+      y = "Predicted Response"
+    ) +
+    facet_wrap(~ Feature, scales = "free_x") +
+    theme_minimal(base_size = 22) +
+    theme(
+      axis.text.x = element_text(size = 20),
+      axis.text.y = element_text(size = 20),
+      strip.text = element_text(size = 22),
+      plot.title = element_text(size = 24, hjust = 0.5, face = "bold"),
+      axis.title.x = element_text(size = 22),
+      axis.title.y = element_text(size = 22)
+    )
+}
+```
+
+generate_pdp_two_vars helper function
+```{r}
+generate_pdp_two_vars <- function(model, data, feature1, feature2, grid_resolution = 20) {
+  
+  # Custom predict function to get class 1 probability
+  predict_rf <- function(object, newdata, ...) {
+    newdata <- as.data.frame(newdata)
+    predict(object, newdata = newdata, type = "prob")[, 2]
+  }
+
+  # Compute 2D partial dependence data
+  pdp_data <- partial(
+    object = model,
+    pred.var = c(feature1, feature2),
+    train = data,
+    grid.resolution = grid_resolution,
+    .f = predict_rf,
+    progress = "text"
+  ) %>%
+    as.data.frame() %>%
+    rename(value1 = 1, value2 = 2, yhat = 3)
+
+  # Plot the 2D PDP
+  ggplot(pdp_data, aes(x = value1, y = value2, fill = yhat)) +
+    geom_tile() +
+    scale_fill_gradient2(low = "red", high = "blue", mid = "lightblue", midpoint = 0) +
+    labs(
+      title = "",
+      x = feature1,
+      y = feature2,
+      fill = "Predicted Response"
+    ) +
+    theme_minimal(base_size = 22) +
+    theme(
+      axis.text.x = element_text(size = 24),
+      axis.text.y = element_text(size = 24),
+      plot.title = element_text(size = 24, hjust = 0.5, face = "bold"),
+      axis.title.x = element_text(size = 26),
+      axis.title.y = element_text(size = 26),
+      legend.text = element_text(size = 20),
+      legend.title = element_text(size = 26)
+    )
+}
+```
+
+generate_pdp_not_nice helper function
+```{r}
+generate_pdp_not_nice <- function(model, data, features, grid_resolution = 20) {
+  
+  # Custom predict function (for models that require type = "prob")
+  predict_rf <- function(object, newdata, ...) {
+    newdata <- as.data.frame(newdata)
+    predict(object, newdata = newdata, type = "prob")[, 2]
+  }
+
+  # Compute PDPs for each feature
+  pdp_data <- lapply(features, function(var) {
+    partial(
+      object = model,
+      pred.var = var,
+      train = data,
+      grid.resolution = grid_resolution,
+      .f = predict_rf,
+      progress = "text"
+    ) %>%
+      as.data.frame() %>%
+      rename(value = 1, yhat = 2) %>%
+      mutate(value = as.numeric(value), Feature = var)
+  })
+
+  # Combine all PDP results into a single dataframe
+  pdp_df <- bind_rows(pdp_data)
+
+  # Plot PDP using ggplot2 with larger text
+  ggplot(pdp_df, aes(x = value, y = yhat)) +  
+    geom_line(linewidth = 1, color = "blue") +  
+    #geom_rug(aes(x = value), sides = "b", alpha = 0.3) +  
+    #geom_rug(aes(y = yhat), sides = "l", alpha = 0.3) +  
+    labs(
+      title = "",  
+      x = "Feature Value",  
+      y = "Predicted Response"  
+    ) +  
+    facet_wrap(~ Feature, scales = "free_x") +  
+    theme_minimal()
+}
+```
+
+plot for age and value
+```{r}
+#from RF 
+ggplot(dataa, aes(x = factor(Age), y = Transfer_Value)) +
+  geom_boxplot(alpha = 0.7) +
+  labs(title = "",
+       x = "Age",
+       y = "Transfer Value") +
+  theme_minimal() +
+  scale_y_continuous(
+    limits = c(-1e7, 1e7),
+    labels = comma                # formats with commas, no sci notation
+  )
+
+ggsave("Plots/Figure1.png")
+```
+
+bar plot pca
+```{r}
+# Create the data frame manually
+df_pca = as.data.frame(projected_x[c("Eibar_2019", "Manchester_City_2021", "Sevilla_2022", "Atlético_Madrid_2018","Dortmund_2023"), ])
+
+df_pca$Team <- rownames(df_pca)
+
+# Convert data to long format for ggplot
+df_long <- df_pca %>%
+  pivot_longer(cols = starts_with("PC"), names_to = "Component", values_to = "Value")
+
+
+# Adjust theme for larger text and legend position
+plot_pca = ggplot(df_long, aes(x = gsub("_", " ", Team), y = Value, fill = Component)) +   
+  geom_bar(stat = "identity", position = "dodge") +   
+  labs(title = "Comparison of PCA Components for Teams",        
+       x = "Team",        
+       y = "PCA Value") +   
+  theme_minimal(base_size = 22) +  # Increase overall text size
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 20),  # Bigger x-axis labels
+    axis.text.y = element_text(size = 20),  # Bigger y-axis labels
+    legend.text = element_text(size = 20),  # Bigger legend text
+    legend.title = element_text(size = 22),  # Bigger legend title
+    plot.title = element_text(size = 24, hjust = 0.5),  # Centered & bigger title
+    legend.position = "bottom",  # Move legend below the plot
+    legend.key.size = unit(1.5, "cm")  # Make legend keys bigger
+  )
+
+# Export with higher resolution, adjusted size, and legend-friendly layout
+ggsave(filename = "Plots/Figure4.png", plot = plot_pca, 
+       width = 8, height = 10, dpi = 300, scale = 1.5)
+
+```
+
+plot for pdp whole model bin
+```{r}
+a99 = generate_pdp(rfbin_tot2, tot_data[ , names(tot_data) != "gb_age"] , c("PC2_diff","PC1_diff","PC3_diff","PC4_diff","total_diff","PPM_Team.Success","xGplus_per__minus__Team.Success..xG","xGplus_per__minus_90_Team.Success..xG","On_minus_Off_Team.Success"))
+
+# Define readable labels for the features
+feature_labels <- c(
+  "PC2_diff" = "PC2 Difference",
+  "PC1_diff" = "PC1 Difference",
+  "PC3_diff" = "PC3 Difference",
+  "PC4_diff" = "PC4 Difference",
+  "total_diff" = "Total PC Difference",
+  "PPM_Team.Success" = "Points per Match",
+  "xGplus_per__minus__Team.Success..xG" = "Net Expected Goals",
+  "xGplus_per__minus_90_Team.Success..xG" = "xG for - against per90",
+  "On_minus_Off_Team.Success" = "Impact On vs Off Pitch"
+)
+
+# Modify facet labels using labeller
+a99 = a99 + facet_wrap(~ Feature, scales = "free_x", labeller = as_labeller(feature_labels))
+
+
+ggsave("Plots/Figure5.png", a99, width = 8, height = 10, dpi = 300, scale = 1.5)
+```
+
+interactions for whole model bin
+```{r}
+# Extract variable importance from the trained model
+var_importance <- rfbin_tot2$variable.importance
+
+# Convert to a dataframe for sorting
+var_importance_df <- data.frame(Variable = names(var_importance), Importance = var_importance)
+
+# Sort by importance in descending order
+var_importance_df <- var_importance_df[order(-var_importance_df$Importance), ]
+
+# Get the top 40 most important variables
+top_variables <- var_importance_df$Variable[1:40]
+
+# delete the first col and make it the names
+rfbin_tot_vivi2 <- as.data.frame(rfbin_tot_vivi2)
+rownames(rfbin_tot_vivi2) <- rfbin_tot_vivi2[[1]]
+rfbin_tot_vivi2 <- rfbin_tot_vivi2[, -1]
+
+# Subset and reorder rfbin_tot_vivi2 based on the sorted variable importance
+sorted_mat <- rfbin_tot_vivi2[top_variables, top_variables]
+sorted_mat <- as.matrix(sorted_mat)
+
+# Plot the heatmap
+vivi1 = viviHeatmap(mat = sorted_mat,angle = 45)
+
+ggsave("Plots/Figure6.png", vivi1, width = 10, height = 10, units = "in", dpi = 300)
+```
+
+pdp for fw model
+```{r}
+pdp_fw = generate_pdp(rfbin_fw2, fw_data2bin , c("PC4_diff","PC1_diff","PC2_diff","Succ_percent_Take","total_diff", "PC3_diff"))#top 6 variables for fw
+
+# Define readable labels for the features
+feature_labels2 <- c(
+  "PC2_diff" = "PC2 Difference",
+  "PC1_diff" = "PC1 Difference",
+  "PC3_diff" = "PC3 Difference",
+  "PC4_diff" = "PC4 Difference",
+  "total_diff" = "Total PC Difference",
+  "Succ_percent_Take" = "Successful Take-On %"
+)
+
+# Modify facet labels using labeller
+pdp_fw = pdp_fw + facet_wrap(~ Feature, scales = "free_x", labeller = as_labeller(feature_labels2))
+
+ggsave("Plots/Figure9.png", pdp_fw, width = 8, height = 10, dpi = 300, scale = 1.5)
+
+```
+
+interactions for fw model
+```{r}
+ # Extract variable importance from the trained model
+var_importancefw <- rfbin_fw2$variable.importance
+
+# Convert to a dataframe for sorting
+var_importance_dffw <- data.frame(Variable = names(var_importancefw), Importance = var_importancefw)
+
+# Sort by importance in descending order
+var_importance_dffw <- var_importance_dffw[order(-var_importance_dffw$Importance), ]
+
+# Get the top 40 most important variables
+top_variablesfw <- var_importance_dffw$Variable[1:40]
+
+# delete the first col and make it the names
+rfbin_fw_vivi2 <- as.data.frame(rfbin_fw_vivi2)
+rownames(rfbin_fw_vivi2) <- rfbin_fw_vivi2[[1]]
+rfbin_fw_vivi2 <- rfbin_fw_vivi2[, -1]
+
+# Subset and reorder rfbin_fw_vivi2 based on the sorted variable importance
+sorted_matfw <- rfbin_fw_vivi2[top_variablesfw, top_variablesfw]
+sorted_matfw <- as.matrix(sorted_matfw)
+
+# Plot the heatmap
+vivi2 = viviHeatmap(mat = sorted_matfw,angle = 45)
+
+ggsave("Plots/Figure10.png", vivi2, width = 10, height = 10, units = "in", dpi = 300)
+```
+
+interactions for mid model
+```{r}
+ # Extract variable importance from the trained model
+var_importancemid <- rfbin_mid2$variable.importance
+
+# Convert to a dataframe for sorting
+var_importance_dfmid <- data.frame(Variable = names(var_importancemid), Importance = var_importancemid)
+
+# Sort by importance in descending order
+var_importance_dfmid <- var_importance_dfmid[order(-var_importance_dfmid$Importance), ]
+
+# Get the top 40 most important variables
+top_variablesmid <- var_importance_dfmid$Variable[1:40]
+
+# delete the first col and make it the names
+rfbin_mid_vivi2 <- as.data.frame(rfbin_mid_vivi2)
+rownames(rfbin_mid_vivi2) <- rfbin_mid_vivi2[[1]]
+rfbin_mid_vivi2 <- rfbin_mid_vivi2[, -1]
+
+# Subset and reorder rfbin_tot_vivi2 based on the sorted variable importance
+sorted_matmid <- rfbin_mid_vivi2[top_variablesmid, top_variablesmid]
+sorted_matmid <- as.matrix(sorted_matmid)
+
+# Plot the heatmap
+vivi3 = viviHeatmap(mat = sorted_matmid,angle = 45)
+
+ggsave("Plots/Figure14.png", vivi3, width = 10, height = 10, units = "in", dpi = 300)
+```
+#### muss noch machen
+
+interactions for df model
+```{r}
+  # Extract variable importance from the trained model
+var_importancedf <- rfbin_df2$variable.importance
+
+# Convert to a dataframe for sorting
+var_importance_dfdf <- data.frame(Variable = names(var_importancedf), Importance = var_importancedf)
+
+# Sort by importance in descending order
+var_importance_dfdf <- var_importance_dfdf[order(-var_importance_dfdf$Importance), ]
+
+# Get the top 40 most important variables
+top_variablesdf <- var_importance_dfdf$Variable[1:40]
+
+# delete the first col and make it the names
+rfbin_df_vivi2 <- as.data.frame(rfbin_df_vivi2)
+rownames(rfbin_df_vivi2) <- rfbin_df_vivi2[[1]]
+rfbin_df_vivi2 <- rfbin_df_vivi2[, -1]
+
+# Subset and reorder rfbin_tot_vivi2 based on the sorted variable importance
+sorted_matdf <- rfbin_df_vivi2[top_variablesdf, top_variablesdf]
+sorted_matdf <- as.matrix(sorted_matdf)
+
+# Plot the heatmap
+vivi4 = viviHeatmap(mat = sorted_matdf,angle = 45)
+
+ggsave("Plots/Figure18.png", vivi4, width = 10, height = 10, units = "in", dpi = 300)
+```
+
+pdp for df model
+```{r}
+pdp_df = generate_pdp(rfbin_df2, df_data2bin , c("PC4_diff","PC1_diff","PC2_diff","Won_percent_Aerial","total_diff", "PC3_diff"))#top 6 variables for fw
+
+# Define readable labels for the features
+feature_labels3 <- c(
+  "PC2_diff" = "PC2 Difference",
+  "PC1_diff" = "PC1 Difference",
+  "PC3_diff" = "PC3 Difference",
+  "PC4_diff" = "PC4 Difference",
+  "total_diff" = "Total PC Difference",
+  "Won_percent_Aerial" = "Aerials Won %"
+)
+
+# Modify facet labels using labeller
+pdp_df = pdp_df + facet_wrap(~ Feature, scales = "free_x", labeller = as_labeller(feature_labels3))
+
+ggsave("Plots/Figure17.png", pdp_df, width = 8, height = 10, dpi = 300, scale = 1.5)
+```
+
+mid pdp
+```{r}
+pdp_mid = generate_pdp(rfbin_mid2, mid_data2bin , c("PC4_diff","PC1_diff","PC2_diff","xGplus_per__minus_90_Team.Success..xG","total_diff", "PC3_diff"))#top 6 variables for mid
+
+
+# Define readable labels for the features
+feature_labels4 <- c(
+  "PC2_diff" = "PC2 Difference",
+  "PC1_diff" = "PC1 Difference",
+  "PC3_diff" = "PC3 Difference",
+  "PC4_diff" = "PC4 Difference",
+  "total_diff" = "Total PC Difference",
+  "xGplus_per__minus_90_Team.Success..xG" = "xG for - against per90"
+)
+
+# Modify facet labels using labeller
+pdp_mid = pdp_mid + facet_wrap(~ Feature, scales = "free_x", labeller = as_labeller(feature_labels4))
+
+ggsave("Plots/Figure13.png", pdp_mid, width = 8, height = 10, dpi = 300, scale = 1.5)
+```
+
+tot interactions
+```{r}
+tot_int = generate_pdp_two_vars(rfbin_tot2, tot_data2bin, "xGplus_per__minus__Team.Success..xG", "PC2_diff")+
+  labs(x = "xG for - against",y = "PC2 Difference")
+
+ggsave("Plots/Figure7.png", tot_int, width = 10, height = 10, units = "in", dpi = 300)
+
+```
+
+fw interactions
+```{r}
+fw_int1 = generate_pdp_two_vars(rfbin_fw2, fw_data2bin, "Succ_percent_Take", "total_diff")+labs(x = "Successful Take-On %",y = "Total PC Difference")
+
+ggsave("Plots/Figure11.png", fw_int1, width = 10, height = 10, units = "in", dpi = 300)
+
+fw_int2 = generate_pdp_two_vars(rfbin_fw2, fw_data2bin, "Succ_percent_Take","Tkld_percent_Take")+labs(y = "Tackles Won %",x = "Successful Take-On %")
+
+ggsave("Plots/Figure12.png", fw_int2, width = 10, height = 10, units = "in", dpi = 300)
+
+```
+
+mid interactions
+```{r}
+mid_int1 = generate_pdp_two_vars(rfbin_mid2, mid_data2bin, "Dead_Pass", "Ast_Per")+labs(x = "Dead Passes",y = "Assists per 90")
+
+ggsave("Plots/Figure15.png", mid_int1, width = 10, height = 10, units = "in", dpi = 300)
+
+mid_int2 = generate_pdp_two_vars(rfbin_mid2, mid_data2bin, "Dead_Pass", "Won_percent_Aerial")+labs(y = "Aerials Won %",x = "Dead Passes")
+
+ggsave("Plots/Figure16.png", mid_int2, width = 10, height = 10, units = "in", dpi = 300)
+
+```
+
+df interctions
+```{r}
+df_int1 = generate_pdp_two_vars(rfbin_df2, df_data2bin,"Won_percent_Aerial",  "xGplus_per__minus_90_Team.Success..xG") + labs(y = "xG for - against per90",x = "Aerials Won %")
+
+ggsave("Plots/Figure19.png", df_int1, width = 10, height = 10, units = "in", dpi = 300)
+#then the same but for xGplus_per__minus_Team.Success..xG 
+
+#then xGplus_per__minus__Team.Success..xG and xGplus_per__minus_90_Team.Success..xG which is discussed in one
+
+```
+
+comp from to and expected goals
+```{r}
+data_comptofrom = tot_data2bin
+data_comptofrom$Comp_from_to <- as.factor(data_comptofrom$Comp_from_to)
+
+one1 <- partial(object = rfbin_tot2,
+                       pred.var = c("Comp_from_to", "xGplus_per__minus__Team.Success..xG"),
+                       train = data_comptofrom,
+                       grid.resolution = 10) %>%
+    as.data.frame() %>%
+    rename(value1 = 1, value2 = 2, yhat = 3)
+
+generate_pdp_selected_lines_plot <- function(data) {
+  
+  # Make sure data in the correct format
+  data <- data %>%
+    mutate(value1 = as.factor(value1))  # Convert value to a factor for filtering
+  
+  # Filter for specific value categories
+  data_filtered <- data %>%
+    filter(value1 %in% c("Premier League_Serie A", "Bundesliga_Bundesliga"))%>% #Highest and lowest vals
+    mutate(value1 = gsub("_", " to ", value1))
+  
+  # Plot with only selected categories colored
+  ggplot(data, aes(x = value2, y = yhat, group = value1)) +
+    geom_line(data = data, aes(x = value2, y = yhat), color = "gray", alpha = 0.4) +
+    geom_line(data = data_filtered, aes(color = value1), linewidth = 1) +
+    labs(
+      title = "",
+      x = "Net Expected Goals",
+      y = "Predicted Response",
+      color = "Competition From and To"
+    ) +
+    theme_minimal(base_size = 22) + 
+    theme(
+      axis.text.x = element_text(size = 24),  
+      axis.text.y = element_text(size = 24),  
+      plot.title = element_text(size = 26, hjust = 0.5, face = "bold"),  
+      axis.title.x = element_text(size = 26),  
+      axis.title.y = element_text(size = 26),  
+      legend.text = element_text(size = 24),  
+      legend.title = element_text(size = 26)
+    )  
+}
+
+comp_xg = generate_pdp_selected_lines_plot(one1)
+
+ggsave("Plots/Figure8.png", comp_xg, width = 10, height = 10, dpi = 300, scale = 1.5)
+```
+
+```{r}
+top_20_features_tot_bin2 <- combined_varimp_bin2 %>%
+  arrange(Rank_Avg) %>%
+  head(22) %>%
+  filter(!Variable %in% c("Comp_from_to", "Nation")) %>% #nation, comptofrom category out because not numeric
+  pull(Variable)
+
+top_20_features_fw_bin2 <- combined_varimp_bin2 %>%
+  arrange(Rank_fw) %>%
+  head(21) %>%
+  filter(!Variable %in% c("Nation")) %>% #nation category out because not numeric
+  pull(Variable)
+
+top_20_features_mid_bin2 <- combined_varimp_bin2 %>%
+  arrange(Rank_mid) %>%
+  head(22) %>%
+  filter(!Variable %in% c("Comp_from_to", "Nation")) %>% #nation, comptofrom category out because not numeric
+  pull(Variable)
+
+top_20_features_df_bin2 <- combined_varimp_bin2 %>%
+  arrange(Rank_df) %>%
+  head(22) %>%
+  filter(!Variable %in% c("Comp_from_to", "Nation")) %>% #nation, comptofrom category out because not numeric
+  pull(Variable)
+
+top_20_features_tot_reg2 <- combined_varimp_reg2 %>%
+  arrange(Rank_Avg) %>%
+  head(21) %>%
+  filter(!Variable %in% c("Nation")) %>% #nation category out because not numeric
+  pull(Variable)
+
+top_20_features_fw_reg2 <- combined_varimp_reg2 %>%
+  arrange(Rank_fw) %>%
+  head(20) %>%
+  pull(Variable)
+
+top_20_features_mid_reg2 <- combined_varimp_reg2 %>%
+  arrange(Rank_mid) %>%
+  head(21) %>%
+  filter(!Variable %in% c("Nation")) %>% #nation category out because not numeric
+  pull(Variable)
+
+top_20_features_df_reg2 <- combined_varimp_reg2 %>%
+  arrange(Rank_df) %>%
+  head(20) %>%
+  pull(Variable)
+
+# Call the function
+a12 = generate_pdp_not_nice(rfbin_tot2, tot_data[ , names(tot_data) != "gb_age"] , top_20_features_tot_bin2)
+a22 = generate_pdp_not_nice(rfbin_fw2, fw_data[ , names(fw_data) != "gb_age"] , top_20_features_fw_bin2)
+a32 = generate_pdp_not_nice(rfbin_mid2, mid_data[ , names(mid_data) != "gb_age"] , top_20_features_mid_bin2)
+a42 = generate_pdp_not_nice(rfbin_df2, df_data[ , names(df_data) != "gb_age"] , top_20_features_df_bin2)
+a52 = generate_pdp_not_nice(rfreg_tot2, tot_data[-1] , top_20_features_tot_reg2) + labs(y = "Predicted Transfer Value in Euro")
+a62 = generate_pdp_not_nice(rfreg_fw2, fw_data[-1] , top_20_features_fw_reg2)+ labs(y = "Predicted Transfer Value in Euro")
+a72 = generate_pdp_not_nice(rfreg_mid2, mid_data[-1] , top_20_features_mid_reg2)+ labs(y = "Predicted Transfer Value in Euro")
+a82 = generate_pdp_not_nice(rfreg_df2, df_data[-1] , top_20_features_df_reg2)+ labs(y = "Predicted Transfer Value in Euro")
+
+ggsave("Plots/Figure20.png", a12, width = 10, height = 10, units = "in", dpi = 300)
+ggsave("Plots/Figure21.png", a22, width = 10, height = 10, units = "in", dpi = 300)
+ggsave("Plots/Figure22.png", a32, width = 10, height = 10, units = "in", dpi = 300)
+ggsave("Plots/Figure23.png", a42, width = 10, height = 10, units = "in", dpi = 300)
+ggsave("Plots/Figure24.png", a52, width = 10, height = 10, units = "in", dpi = 300)
+ggsave("Plots/Figure25.png", a62, width = 10, height = 10, units = "in", dpi = 300)
+ggsave("Plots/Figure26.png", a72, width = 10, height = 10, units = "in", dpi = 300)
+ggsave("Plots/Figure27.png", a82, width = 10, height = 10, units = "in", dpi = 300)
+```

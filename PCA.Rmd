@@ -1,0 +1,277 @@
+---
+title: "PCA"
+author: "Justin Lampman"
+date: "2025-01-22"
+output: html_document
+---
+
+For the code to work without loading any data previously, you first have to run PCA.Rmd, then you have to run Daten.Rmd to have all data. To run the models you have to run rf.Rmd. For the plots you need to run plots.Rmd. 
+To load all data without running the code, you can use the csv files in the csv data folder and run them in the second chunk. The models are saved in the models folder. The plots are saved in the plots folder. The data is saved in the data folder.
+
+packages
+```{r}
+library(worldfootballR)
+library(tidyverse)
+library(ggrepel)
+library(stringi)
+library(stringr)
+library(worldfootballR)
+library(corrr)
+library(ggcorrplot)
+library(factoextra)
+library(purrr)
+library(vivid)
+library(scales)
+library(reshape2)  # For data transformation
+library(viridis)
+library(ranger)
+library(Metrics)
+mapping = read.csv("csv data/names.csv")# Mapping for clubs of transfermakt data and fbref data
+```
+
+If you do not want to run the code, you can also use the csv files in the csv data folder and load these to have all the data, to run the models and get the plots
+```{r}
+pca_join_age_diff2total <- read.csv("csv data/pca.csv")
+dataa <- read_csv("csv data/dataa123.csv")%>% select(-1)
+#
+rfreg_tot_vivi2 <- read.csv("csv data/rfreg_tot_vivi2.csv")
+rfbin_tot_vivi2 <- read.csv("csv data/rfbin_tot_vivi2.csv")
+rfreg_fw_vivi2 <- read.csv("csv data/rfreg_fw_vivi2.csv")
+rfbin_fw_vivi2 <- read.csv("csv data/rfbin_fw_vivi2.csv")
+rfreg_df_vivi2 <- read.csv("csv data/rfreg_df_vivi2.csv")
+rfbin_df_vivi2 <- read.csv("csv data/rfbin_df_vivi2.csv")
+rfreg_mid_vivi2 <- read.csv("csv data/rfreg_mid_vivi2.csv")
+rfbin_mid_vivi2 <- read.csv("csv data/rfbin_mid_vivi2.csv")
+#
+data_butlook <- read_csv("csv data/data.csv")
+#
+mid_data2reg <- read.csv("csv data/mid_data2reg.csv")
+df_data2reg <- read.csv("csv data/df_data2reg.csv")
+tot_data2reg <- read.csv("csv data/vtot_data2reg.csv")
+fw_data2reg <- read.csv("csv data/fw_data2reg.csv")
+fw_data2bin <- read.csv("csv data/fw_data2bin.csv")
+mid_data2bin <- read.csv("csv data/mid_data2bin.csv")
+df_data2bin <- read.csv("csv data/df_data2bin.csv")
+tot_data2bin <- read.csv("csv data/tot_data2bin.csv")
+#
+combined_varimp_bin2 <- read.csv("csv data/combined_varimp_bin2.csv")
+combined_varimp_reg2 <- read.csv("csv data/combined_varimp_reg2.csv")
+#
+regbin <- read.csv("csv data/regbin.csv")
+#
+rfbin_tot_vivi2 <- read.csv("csv data/rfbin_tot_vivi2.csv")
+rfreg_fw_vivi2 <- read.csv("csv data/rfreg_fw_vivi2.csv")
+rfbin_fw_vivi2 <- read.csv("csv data/rfbin_fw_vivi2.csv")
+rfreg_df_vivi2 <- read.csv("csv data/rfreg_df_vivi2.csv")
+rfbin_df_vivi2 <- read.csv("csv data/rfbin_df_vivi2.csv")
+rfreg_mid_vivi2 <- read.csv("csv data/rfreg_mid_vivi2.csv")
+rfbin_mid_vivi2 <- read.csv("csv data/rfbin_mid_vivi2.csv")
+#
+train_data_df2 <- read.csv("csv data/train_data_df2.csv")
+test_data_df2 <- read.csv("csv data/test_data_df2.csv")
+test_data_fw2 <- read.csv("csv data/test_data_fw2.csv") 
+train_data_fw2 <- read.csv("csv data/train_data_fw2.csv")
+train_data_mid2 <- read.csv("csv data/train_data_mid2.csv")
+test_data_mid2 <- read.csv("csv data/test_data_mid2.csv")
+train_data_tot2 <- read.csv("csv data/train_data_tot2.csv")
+test_data_tot2 <- read.csv("csv data/test_data_tot2.csv")
+#
+df_data <- read.csv("csv data/df_data.csv")
+mid_data <- read.csv("csv data/mid_data.csv")
+fw_data <- read.csv("csv data/fw_data.csv")
+tot_data <- read.csv("csv data/tot_data.csv")
+#
+rfbin_fw2 <- readRDS("models/rfbin_fw2.rds")
+rfbin_df2 <- readRDS("models/rfbin_df2.rds")
+rfbin_mid2 <- readRDS("models/rfbin_mid2.rds")
+rfbin_tot2 <- readRDS("models/rfbin_tot2.rds")
+rfreg_fw2 <- readRDS("models/rfreg_fw2.rds")
+rfreg_df2 <- readRDS("models/rfreg_df2.rds")
+rfreg_mid2 <- readRDS("models/rfreg_mid2.rds")
+rfreg_tot2 <- readRDS("models/rfreg_tot2.rds")
+# load these for the data from Transfermarkt and Fbref
+all_val <- read.csv("csv data/all_val.csv")
+final_combined_data <- read.csv("csv data/final_combined_data.csv")
+joined_data = read.csv("csv data/team_data_pca.csv")
+```
+
+data for teams
+```{r}
+big5_team_standard <- fb_big5_advanced_season_stats(season_end_year= c(2018:2024), stat_type= c("standard"), team_or_player= "team")
+
+big5_team_shooting <- fb_big5_advanced_season_stats(season_end_year= c(2018:2024), stat_type= c("shooting"), team_or_player= "team")
+
+big5_team_passing <- fb_big5_advanced_season_stats(season_end_year= c(2018:2024), stat_type= c("passing"), team_or_player= "team")
+
+big5_team_passing_types <- fb_big5_advanced_season_stats(season_end_year= c(2018:2024), stat_type= c("passing_types"), team_or_player= "team")
+
+big5_team_gca <- fb_big5_advanced_season_stats(season_end_year= c(2018:2024), stat_type= c("gca"), team_or_player= "team")
+
+big5_team_defense <- fb_big5_advanced_season_stats(season_end_year= c(2018:2024), stat_type= c("defense"), team_or_player= "team")
+
+big5_team_possession <- fb_big5_advanced_season_stats(season_end_year= c(2018:2024), stat_type= c("possession"), team_or_player= "team")
+
+big5_team_playing_time <- fb_big5_advanced_season_stats(season_end_year= c(2018:2024), stat_type= c("playing_time"), team_or_player= "team")
+
+big5_team_misc <- fb_big5_advanced_season_stats(season_end_year= c(2018:2024), stat_type= c("misc"), team_or_player= "team")
+
+big5_team_keepers <- fb_big5_advanced_season_stats(season_end_year= c(2018:2024), stat_type= c("keepers"), team_or_player= "team")
+
+big5_team_keepers_adv <- fb_big5_advanced_season_stats(season_end_year= c(2018:2024), stat_type= c("keepers_adv"), team_or_player= "team")
+
+```
+
+team data join and format
+```{r}
+datasets <- list(
+  big5_team_standard,
+  big5_team_shooting,
+  big5_team_passing,
+  big5_team_passing_types,
+  big5_team_gca,
+  big5_team_defense,
+  big5_team_possession,
+  big5_team_playing_time,
+  big5_team_misc,
+  big5_team_keepers,
+  big5_team_keepers_adv
+)
+
+# Join all datasets by the first 4 columns
+joined_data <- reduce(datasets, function(x, y) {
+  full_join(x, y, by = colnames(x)[1:4])
+})
+
+joined_data <- joined_data %>% 
+  dplyr::select(!matches("\\.x$|\\.y$"))
+#save
+#write.csv(joined_data, "csv data/team_data_pca.csv")
+#joined_data = read.csv("csv data/team_data_pca.csv")
+```
+
+team data join and format 2
+```{r}
+teams = joined_data %>% dplyr::select("Season_End_Year","Squad","Team_or_Opponent","PrgC_Progression","PrgP_Progression",
+       "Sh_Standard","Dist_Standard",
+       "Att_Total","TotDist_Total","PrgDist_Total","Att_Medium","Att_Short","Att_Long","KP","Final_Third","PPA","CrsPA","PrgP",
+       "TB_Pass","Sw_Pass","Crs_Pass",
+       "PassLive_SCA","PassDead_SCA","Def_SCA","TO_GCA",
+       "Def.3rd_Tackles","Mid.3rd_Tackles","Att.3rd_Tackles","Att_Challenges","Blocks_Blocks","Tkl.Int","Clr",
+       "Def.Pen_Touches","Def.3rd_Touches","Mid.3rd_Touches","Att.3rd_Touches","Att.Pen_Touches","TotDist_Carries",                 "PrgDist_Carries","PrgC_Carries","Final_Third_Carries","CPA_Carries","PrgR_Receiving","Att_Take",
+       "Won_Aerial","Lost_Aerial","Fls","Fld","Off") %>%
+  dplyr::filter(Team_or_Opponent == "team")
+
+teams$Squad <- str_replace_all(teams$Squad, " ", "_")
+
+teams = teams %>%
+  mutate(Squad_Season = str_c(str_replace_all(Squad, " ", "_"), "_", Season_End_Year)) 
+
+rownames(teams) <- teams$Squad_Season
+
+teams = teams %>% dplyr::select(-c("Season_End_Year","Squad","Team_or_Opponent","Squad_Season"))
+```
+
+values for the pcas
+```{r}
+euro_scaled <- scale(teams)
+projection_matrix = eigen(cor(teams))$vectors[, 1:4]
+projected_x <- euro_scaled %*% projection_matrix
+colnames(projected_x) <- c("PC1", "PC2","PC3","PC4")
+head(projected_x)
+```
+
+plots for pcas by team
+dont need but keep it
+```{r}
+# Convert to data frame and extract team names and years
+df_pca <- as.data.frame(projected_x)
+df_pca$Team <- gsub("_\\d{4}", "", rownames(projected_x))
+df_pca$Year <- as.numeric(gsub(".*_(\\d{4})", "\\1", rownames(projected_x)))
+
+# Reshape data to long format
+df_long <- df_pca %>%
+  pivot_longer(cols = starts_with("PC"), names_to = "Component", values_to = "Value")
+
+# Choose specific teams to visualize
+selected_teams <- c("Atlético_Madrid", "Barcelona", "Liverpool", "Leicester_City", "Manchester_City")
+
+# Filter the data for teams
+df_filtered <- df_long %>%
+  filter(Team %in% selected_teams)
+
+# Plot the PCA values over time for some teams. Not in Thesis
+ggplot(df_filtered, aes(x = Year, y = Value, color = Team, group = Team)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~ Component, scales = "free_y") +
+  labs(title = "PCA Values Over Time for Selected Teams",
+       x = "Year",
+       y = "PCA Value") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+```
+
+make pca bind to each player with all pcas 
+```{r}
+data_butlook <- read_csv("data.csv")#read csv from Daten.Rmd to combine playe with pca from teams
+pca_team_before <- dataa %>%    
+  mutate(Squad_Season = str_c(str_replace_all(squad, " ", "_"), "_", Season_End_Year)) %>% 
+  left_join((as.data.frame(projected_x) %>%
+  rownames_to_column(var = "Team")), by = c("Squad_Season" = "Team")) %>%    
+  dplyr::select(squad, player_url, Squad_Season, gb_age, Season_End_Year,PC1,PC2,PC3,PC4)
+
+
+# Step 2: Get filtered URLs
+filtered_urls_pca_diff <- unique(pca_team_before$player_url)
+
+inbetween_pca_diff = pca_team_before %>% dplyr::select(player_url,Season_End_Year) %>%
+  mutate(Season_End_Year = Season_End_Year + 1)
+
+#adjust data
+data_butlook = data_butlook %>%
+  arrange(player_url, Season_End_Year, rownr)
+
+# Perform the join as before
+pca_team_after <- inner_join(inbetween_pca_diff, data_butlook, 
+                   by = c("player_url" = "player_url", "Season_End_Year" = "Season_End_Year")) %>%
+  dplyr::select(player_url, Season_End_Year, Squad, rownr) %>%
+  group_by(player_url, Season_End_Year) %>%
+  slice_min(rownr) %>%
+  ungroup() %>%
+  mutate(Squad_Season = str_c(str_replace_all(Squad, " ", "_"), "_", Season_End_Year ),
+         Season_End_Year = Season_End_Year)%>%
+left_join((as.data.frame(projected_x) %>%
+  rownames_to_column(var = "Team")), by = c("Squad_Season" = "Team")) %>%    
+  dplyr::select(Squad, player_url, Squad_Season, Season_End_Year,PC1,PC2,PC3,PC4) %>% 
+  mutate(Season_End_Year = Season_End_Year - 1) %>%
+  mutate(PC1a = PC1,PC2a = PC2,PC3a = PC3,PC4a = PC4) %>%
+  dplyr::select(-PC1,-PC2,-PC3,-PC4)
+
+```
+
+total differences between pcas
+```{r}
+pca_join_age_diff2total <- inner_join(pca_team_before, pca_team_after, by = c("player_url", "Season_End_Year")) %>% 
+  # Calculate the differences
+  mutate(
+    PC1_diff = PC1 - PC1a,
+    PC2_diff = PC2 - PC2a,
+    PC3_diff = PC3 - PC3a,
+    PC4_diff = PC4 - PC4a,
+    total_diff = abs(PC1_diff) + abs(PC2_diff) + abs(PC3_diff) + abs(PC4_diff)
+  ) %>% 
+  # Drop unnecessary columns
+  dplyr::select(
+    -PC1, -PC2, -PC3, -PC4,
+    -PC1a, -PC2a, -PC3a, -PC4a,
+    -Squad_Season.x, -Squad_Season.y,
+    -Squad, -squad
+  )
+```
+
+save the pca file
+```{r}
+# write.csv(pca_join_age_diff2total, "csv data/pca.csv")
+```
+

@@ -1,0 +1,688 @@
+---
+title: "Daten"
+author: "Justin Lampman"
+date: "2025-02-26"
+output: html_document
+---
+
+For the code to work without loading any data previously, you first have to run PCA.Rmd, then you have to run Daten.Rmd to have all data. To run the models you have to run rf.Rmd. For the plots you need to run plots.Rmd. 
+To load all data without running the code, you can use the csv files in the csv data folder and run them in the second chunk. The models are saved in the models folder. The plots are saved in the plots folder. The data is saved in the data folder.
+
+packages
+```{r}
+library(worldfootballR)
+library(tidyverse)
+library(ggrepel)
+library(stringi)
+library(stringr)
+library(worldfootballR)
+library(corrr)
+library(ggcorrplot)
+library(factoextra)
+library(purrr)
+library(vivid)
+library(scales)
+library(reshape2)  # For data transformation
+library(viridis) 
+library(ranger)
+library(Metrics)
+mapping = read.csv("csv data/names.csv")# Mapping for clubs of transfermakt data and fbref data
+```
+
+If you do not want to run the code, you can also use the csv files in the csv data folder and load these to have all the data, to run the models and get the plots
+```{r}
+pca_join_age_diff2total <- read.csv("csv data/pca.csv")
+dataa <- read_csv("csv data/dataa123.csv")%>% select(-1)
+#
+rfreg_tot_vivi2 <- read.csv("csv data/rfreg_tot_vivi2.csv")
+rfbin_tot_vivi2 <- read.csv("csv data/rfbin_tot_vivi2.csv")
+rfreg_fw_vivi2 <- read.csv("csv data/rfreg_fw_vivi2.csv")
+rfbin_fw_vivi2 <- read.csv("csv data/rfbin_fw_vivi2.csv")
+rfreg_df_vivi2 <- read.csv("csv data/rfreg_df_vivi2.csv")
+rfbin_df_vivi2 <- read.csv("csv data/rfbin_df_vivi2.csv")
+rfreg_mid_vivi2 <- read.csv("csv data/rfreg_mid_vivi2.csv")
+rfbin_mid_vivi2 <- read.csv("csv data/rfbin_mid_vivi2.csv")
+#
+data_butlook <- read_csv("csv data/data.csv")
+#
+mid_data2reg <- read.csv("csv data/mid_data2reg.csv")
+df_data2reg <- read.csv("csv data/df_data2reg.csv")
+tot_data2reg <- read.csv("csv data/vtot_data2reg.csv")
+fw_data2reg <- read.csv("csv data/fw_data2reg.csv")
+fw_data2bin <- read.csv("csv data/fw_data2bin.csv")
+mid_data2bin <- read.csv("csv data/mid_data2bin.csv")
+df_data2bin <- read.csv("csv data/df_data2bin.csv")
+tot_data2bin <- read.csv("csv data/tot_data2bin.csv")
+#
+combined_varimp_bin2 <- read.csv("csv data/combined_varimp_bin2.csv")
+combined_varimp_reg2 <- read.csv("csv data/combined_varimp_reg2.csv")
+#
+regbin <- read.csv("csv data/regbin.csv")
+#
+rfbin_tot_vivi2 <- read.csv("csv data/rfbin_tot_vivi2.csv")
+rfreg_fw_vivi2 <- read.csv("csv data/rfreg_fw_vivi2.csv")
+rfbin_fw_vivi2 <- read.csv("csv data/rfbin_fw_vivi2.csv")
+rfreg_df_vivi2 <- read.csv("csv data/rfreg_df_vivi2.csv")
+rfbin_df_vivi2 <- read.csv("csv data/rfbin_df_vivi2.csv")
+rfreg_mid_vivi2 <- read.csv("csv data/rfreg_mid_vivi2.csv")
+rfbin_mid_vivi2 <- read.csv("csv data/rfbin_mid_vivi2.csv")
+#
+train_data_df2 <- read.csv("csv data/train_data_df2.csv")
+test_data_df2 <- read.csv("csv data/test_data_df2.csv")
+test_data_fw2 <- read.csv("csv data/test_data_fw2.csv") 
+train_data_fw2 <- read.csv("csv data/train_data_fw2.csv")
+train_data_mid2 <- read.csv("csv data/train_data_mid2.csv")
+test_data_mid2 <- read.csv("csv data/test_data_mid2.csv")
+train_data_tot2 <- read.csv("csv data/train_data_tot2.csv")
+test_data_tot2 <- read.csv("csv data/test_data_tot2.csv")
+#
+df_data <- read.csv("csv data/df_data.csv")
+mid_data <- read.csv("csv data/mid_data.csv")
+fw_data <- read.csv("csv data/fw_data.csv")
+tot_data <- read.csv("csv data/tot_data.csv")
+#
+rfbin_fw2 <- readRDS("models/rfbin_fw2.rds")
+rfbin_df2 <- readRDS("models/rfbin_df2.rds")
+rfbin_mid2 <- readRDS("models/rfbin_mid2.rds")
+rfbin_tot2 <- readRDS("models/rfbin_tot2.rds")
+rfreg_fw2 <- readRDS("models/rfreg_fw2.rds")
+rfreg_df2 <- readRDS("models/rfreg_df2.rds")
+rfreg_mid2 <- readRDS("models/rfreg_mid2.rds")
+rfreg_tot2 <- readRDS("models/rfreg_tot2.rds")
+# load these for the data from Transfermarkt and Fbref
+all_val <- read.csv("csv data/all_val.csv")
+final_combined_data <- read.csv("csv data/final_combined_data.csv")
+joined_data = read.csv("csv data/team_data_pca.csv")
+```
+
+
+get data from fbref
+```{r}
+data_standard <- fb_big5_advanced_season_stats(season_end_year= c(2018:2024), stat_type= "standard", team_or_player= "player")
+
+data_shooting<- fb_big5_advanced_season_stats(season_end_year= c(2018:2024), stat_type= "shooting", team_or_player= "player")
+
+data_passing <- fb_big5_advanced_season_stats(season_end_year= c(2018:2024), stat_type= "passing", team_or_player= "player")
+
+data_passing_types <- fb_big5_advanced_season_stats(season_end_year= c(2018:2024), stat_type= "passing_types", team_or_player= "player")
+
+data_gca <- fb_big5_advanced_season_stats(season_end_year= c(2018:2024), stat_type= "gca", team_or_player= "player")
+
+data_defense <- fb_big5_advanced_season_stats(season_end_year= c(2018:2024), stat_type= "defense", team_or_player= "player")
+
+data_possession <- fb_big5_advanced_season_stats(season_end_year= c(2018:2024), stat_type= "possession", team_or_player= "player")
+
+data_playing_time <- fb_big5_advanced_season_stats(season_end_year= c(2018:2024), stat_type= "playing_time", team_or_player= "player")
+
+data_misc <- fb_big5_advanced_season_stats(season_end_year= c(2018:2024), stat_type= "misc", team_or_player= "player")
+
+#data_keepers <- fb_big5_advanced_season_stats(season_end_year= c(2018:2024), stat_type= "keepers", team_or_player= "player")
+
+#data_keepers_adv <- fb_big5_advanced_season_stats(season_end_year= c(2018:2024), stat_type= "keepers_adv", team_or_player= "player")
+#keepers are excluded due to the fact that they are not relevant for the analysis
+```
+
+combine all datasets 
+```{r}
+datasets <- list(data_defense, data_gca, data_misc, data_passing, data_passing_types, 
+                  data_possession, data_shooting, data_standard)
+
+# Keep only the first 8 columns of each dataset
+first_8_cols <- lapply(datasets, function(df) df[, 1:8])
+
+base_cols <- first_8_cols[[1]]
+
+# Keep all remaining columns from each dataset after the first 8
+extra_cols <- lapply(datasets, function(df) df[, -(1:8)])
+
+combined_extra_cols <- do.call(cbind, extra_cols)
+
+unique_extra_cols <- combined_extra_cols[, !duplicated(colnames(combined_extra_cols))]
+
+# Combine the base columns with the unique extra columns
+final_combined_data <- cbind(base_cols, unique_extra_cols)
+
+final_combined_data = left_join(final_combined_data,data_playing_time, by = c("Player","Season_End_Year","Comp","Squad", "Url","Nation","Pos","Age", "Born"))
+
+#write.csv(final_combined_data, "csv data/final_combined_data.csv", row.names = FALSE)
+```
+
+Get transfervalues for each year
+```{r}
+all_val17 <- tm_player_market_values(country_name = c("England", "Spain", "France", "Italy", "Germany"),start_year = 2017)
+
+all_val18 <- tm_player_market_values(country_name = c("England", "Spain", "France", "Italy", "Germany"),start_year = 2018)
+
+all_val19 <- tm_player_market_values(country_name = c("England", "Spain", "France", "Italy", "Germany"),start_year = 2019)
+
+all_val20 <- tm_player_market_values(country_name = c("England", "Spain", "France", "Italy", "Germany"),start_year = 2020)
+
+all_val21 <- tm_player_market_values(country_name = c("England", "Spain", "France", "Italy", "Germany"),start_year = 2021)
+
+all_val22 <- tm_player_market_values(country_name = c("England", "Spain", "France", "Italy", "Germany"),start_year = 2022)
+
+all_val23 <- tm_player_market_values(country_name = c("England", "Spain", "France", "Italy", "Germany"),start_year = 2023)
+
+all_val24 <- tm_player_market_values(country_name = c("England", "Spain", "France", "Italy", "Germany"),start_year = 2024)
+
+all_val <- rbind(all_val17,all_val18, all_val19, all_val20, all_val21, all_val22, all_val23, all_val24)
+all_val2 <- rbind(all_val17,all_val18, all_val19, all_val20, all_val21, all_val22, all_val23, all_val24)
+#write.csv(all_val, "csv data/all_val.csv", row.names = FALSE)
+```
+
+make the data from transferamrkt nice and formatable 
+```{r}
+all_val2 = all_val
+# Define regex pattern for detecting numbers
+market_value_pattern <- "[0-9]"
+
+for (i in 1:(nrow(all_val) - 1)) {
+  if (grepl(market_value_pattern, all_val$player_name[i])) {
+    all_val$MarketValue[i - 1] <- all_val$player_name[i]
+    all_val$player_name[i] <- NA
+  } 
+  else if (!grepl(market_value_pattern, all_val$player_name[i]) && 
+           !grepl(market_value_pattern, all_val$player_name[i + 1])) {
+    # Assign "0€" if both the current and the next row do not contain numbers
+    all_val$MarketValue[i] <- "0€"
+  }
+}
+
+# Remove rows where 'player_name' is (not) NA
+all_val <- all_val[!is.na(all_val$player_name), ]
+all_val$rownr = seq.int(nrow(all_val))
+
+all_val = right_join(all_val,mapping, by = "squad") %>%
+dplyr::select(-squad) %>%
+ rename(squad = Squad)
+
+all_val2 = right_join(all_val2,mapping, by = "squad") %>%
+dplyr::select(-squad) %>%
+ rename(squad = Squad)
+
+```
+
+
+put together with data both
+```{r}
+normalize_name <- function(name) {
+  return(stri_trans_general(name, "Latin-ASCII"))
+}
+
+all_val = all_val %>% 
+  dplyr::mutate(comp_name = gsub("LaLiga", "La Liga", comp_name),
+         season_start_year = season_start_year + 1,
+         player_name = sapply(player_name, normalize_name),
+         key = paste(squad,player_name,season_start_year,comp_name,sep = "_"))%>% 
+  arrange(squad, season_start_year) %>% 
+  select(-player_position)
+
+############################################
+#make that player position is right and in there
+all_val_summary <- all_val %>%
+  group_by(squad, season_start_year) %>%
+  summarise(count = n() , .groups = "drop")
+
+
+all_val2_first_position <- all_val2 %>%
+    mutate(season_start_year = season_start_year + 1)%>% #shift the year
+  inner_join(all_val_summary, by = c("squad", "season_start_year")) %>% 
+  group_by(squad, season_start_year) %>%
+  group_modify(~ head(.x, .x$count.y[1])) %>%   # Subset each group based on its own count value
+  ungroup() %>%
+  select(squad, season_start_year, player_position)%>% 
+  arrange(squad, season_start_year)
+
+all_val = cbind(all_val,all_val2_first_position[3])
+############################################
+
+final_combined_data = final_combined_data %>%
+  dplyr::mutate(Player = sapply(Player, normalize_name),
+         key = paste(Squad,Player,Season_End_Year,Comp,sep = "_"))
+
+whole_data = left_join(final_combined_data,all_val,by = "key")
+
+```
+
+make data not that players arent duplicate
+```{r}
+data = whole_data[!is.na(whole_data$MarketValue),]
+data = data[c(1:180,197:203)]
+
+data = data[!duplicated(data[1:182]),]#without last coloumn
+
+data2 = data #here the duplicates are now lost
+
+data2 = data %>% select(Player,Comp,Squad,Age,MarketValue,player_url,Pos,rownr)
+
+#make transfer valuen numeric
+data2$MarketValue <- sapply(data2$MarketValue, function(x) {
+  if (grepl("k", x, ignore.case = TRUE)) { 
+    # For values with "k"
+    as.numeric(gsub("[^0-9.]", "", x)) * 1e3 
+  } else if (grepl("M", x, ignore.case = TRUE)) { 
+    # For values with "M"
+    as.numeric(gsub("[^0-9.]", "", x)) * 1e6 
+  } else { 
+    # Default case (numeric values without a suffix)
+    as.numeric(gsub("[^0-9.]", "", x)) 
+  }
+})
+
+
+ggplot((data2), aes(x = Age, y = MarketValue, group = interaction(Player, Squad), color = Player)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  scale_y_continuous(labels = scales::dollar_format(scale = 1, suffix = "€")) +
+  labs(
+    title = "Market Value of Players by Age",
+    x = "Age",
+    y = "Market Value (in €)",
+    color = "Player"
+  ) +
+  theme_minimal()+
+  theme(legend.position = "none")
+#based on this avererage gain or loss of a player value by age as coefficient of a linear regression model
+#how to transfer data that you have a single player and then if he gained or lost value, transfrom the data to reflect that
+#summarize paper quick and write about the transfer value and the age of the player and how to model how good a player is based on transfer value
+
+#write.csv(data, "csv data/data.csv", row.names = FALSE)
+```
+
+avergae loss by age 
+```{r}
+#Filter and take the first entry for each player and age
+datalm <- data2 %>%
+  group_by(player_url, Age) %>%
+  summarise(MarketValue = first(MarketValue), .groups = "drop")
+
+#Pivot data to make each player a row, with columns for ages
+pivoted_data <- datalm %>%
+  pivot_wider(
+    names_from = Age,  # Make columns based on ages
+    values_from = MarketValue,  # Fill columns with market values
+    names_prefix = "Age_"
+  )
+
+#Reorder columns based on age numerically
+pivoted_data <- pivoted_data %>%
+  select(player_url, order(as.numeric(gsub("Age_", "", names(.)))))
+
+#Calculate percentage change for each player
+long_data <- datalm %>%
+  arrange(player_url, Age) %>%
+  group_by(player_url) %>%
+  mutate(
+    pct_change = (MarketValue / lag(MarketValue) - 1) * 100  # Percentage change
+  ) %>%
+  ungroup()
+
+#Plot each player's data
+ggplot(long_data, aes(x = Age, y = MarketValue, color = player_url, group = player_url)) +
+  geom_line() +  # Connect points for each player
+  geom_point() +  # Show individual points
+  labs(
+    title = "Player Market Value Over Time",
+    x = "Age",
+    y = "Market Value",
+    color = "Player"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+
+#Filter out NA and Inf in percentage change and consider only losses
+filtered_data2 <- long_data %>%
+  filter(!is.na(pct_change) & !is.infinite(pct_change) )
+
+avg_loss_by_age2 <- filtered_data2 %>% 
+  group_by(Age) %>% 
+  summarise(
+    avg_pct_loss = median(1 + pct_change / 100, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+make the data like i want it with zzzinital value
+```{r}
+datause <- data
+datause = datause %>% distinct()
+datause$Season_End_Year <- as.numeric(datause$Season_End_Year)
+# Fill missing years for each player_url
+data_filled <- datause %>% 
+  arrange(player_url, Season_End_Year) %>% # Sort by player_url and year
+  group_by(player_url) %>%
+  complete(Season_End_Year = 2018:2024) %>% # Ensure years 2018 to 2024 exist
+  mutate(
+    Squad = ifelse(is.na(Squad), "no info", Squad), # Set Squad to "no info" for new rows
+    Comp = ifelse(is.na(Comp), coalesce(lag(Comp), lead(Comp)), Comp),
+    MValue = ifelse(is.na(MarketValue), coalesce(lag(MarketValue), lead(MarketValue)), MarketValue),
+   ) %>%
+  ungroup()%>%
+mutate(rowid = row_number())
+
+transitions <- data_filled %>%
+  arrange(player_url, Season_End_Year) %>%
+  group_by(player_url) %>%
+  mutate(
+    Previous_Squad = lag(Squad), # Look at the previous Squad
+    Is_Change = (!is.na(Previous_Squad) & Squad != Previous_Squad & Squad != "no info")
+  ) %>%
+  filter(Is_Change) %>%
+  select(-Is_Change,-Previous_Squad) %>%
+  ungroup() #transitions is the data after the transfer happend
+
+rows = (transitions$rowid -1)
+
+transitions2 <- data_filled %>% filter(rowid %in% rows) %>% select(-MValue,- rowid)
+transitions2$Squad <- "zzzinitial value"
+data_filled <- data_filled[, colnames(datause)]
+
+data_try = rbind(transitions2,datause) %>% arrange(player_url, Season_End_Year,rownr,Squad)
+
+```
+
+make the data so that you can use it
+```{r}
+rows_to_remove <- data_try %>%
+  filter(Squad == "zzzinitial value") %>%
+  group_by(Squad, Season_End_Year, player_url) %>%
+  filter(n() > 1) %>%  # Only keep groups with more than one row
+  arrange(Squad, Season_End_Year, player_url, rownr) %>%  # Sort by rownr (ascending order)
+  slice_tail(n = 1) %>%  # Take the last (highest rownr) for each group
+  select(rownr)  # Only keep the rownr to remove
+
+# Remove rows with higher rownr
+data_try <- data_try %>%
+  filter(!(Squad == "zzzinitial value" & rownr %in% rows_to_remove$rownr))
+
+
+# Add global and local transfer classification
+data_try <- data_try %>%
+  arrange(player_url, Season_End_Year,rownr,Squad) %>%  # Sort by player_url and Season_End_Year
+  group_by(player_url) %>%
+  mutate(
+    Transfer_Group = cumsum(Squad == "zzzinitial value"),  # Group transfers by "zzzinitial value"
+    Is_Transfer = ifelse(Squad == "zzzinitial value" | lag(Squad, default = Squad[1]) == Squad, "Same Transfer", "New Transfer")
+  ) %>%
+  ungroup() %>%
+  mutate(
+    global_transfer_index = dense_rank(paste(player_url, Transfer_Group))  # Global transfer index
+  )
+indices_to_remove <- data_try %>%
+  filter(is.na(MarketValue)) %>%
+  select(global_transfer_index)
+
+#Remove rows with these Global_Transfer_Index values
+data_try_cleaned <- data_try %>%
+  filter(!global_transfer_index %in% indices_to_remove$global_transfer_index) %>% mutate(
+    global_transfer_index = dense_rank(paste(player_url, Transfer_Group))  # Global transfer index
+  )
+
+data_try_cleaned$Age = as.numeric(data_try_cleaned$Age)
+
+length(unique(data_try_cleaned$global_transfer_index))
+
+data_try_cleaned$MarketValue <- sapply(data_try_cleaned$MarketValue, function(x) {
+  if (grepl("k", x, ignore.case = TRUE)) { 
+    # For values with "k"
+    as.numeric(gsub("[^0-9.]", "", x)) * 1e3 
+  } else if (grepl("M", x, ignore.case = TRUE)) { 
+    # For values with "M"
+    as.numeric(gsub("[^0-9.]", "", x)) * 1e6 
+  } else { 
+    # Default case (numeric values without a suffix)
+    as.numeric(gsub("[^0-9.]", "", x)) 
+  }
+})
+
+filtered_data01 <- data_try_cleaned %>%
+  group_by(global_transfer_index) %>%
+  filter(any(Squad == "zzzinitial value")) %>% #Keep only groups where `Squad` has "zzzinitial value"
+  ungroup() %>% arrange(player_url, Season_End_Year,rownr,Squad)
+ 
+filtered_data_cleaned <- filtered_data01 %>%
+  filter(!is.na(Age))
+
+data_transfers = filtered_data_cleaned
+```
+
+calculate the transfer value of the player
+```{r}
+calculate_transfer <- function(data_transfers, avg_loss_by_age) {
+  results <- data.frame(global_transfer_index = integer(), Transfer_Value = numeric(), stringsAsFactors = FALSE)
+  
+  # Loop over each unique global_transfer_index in the dataset
+  for (transfer_index in unique(data_transfers$global_transfer_index)) {
+    transfer_data <- data_transfers[data_transfers$global_transfer_index == transfer_index, ]
+    
+    n_transfers <- nrow(transfer_data)  
+    if (n_transfers < 2) next  # Skip if fewer than 2 transfers
+    
+    # Calculate the discount factor dynamically
+    discount_factor <- sum(1 / 1:n_transfers) - 1
+    
+    # Extract values for the first transfer
+    mv1 <- transfer_data$MarketValue[[1]]
+    if (mv1 == 0) mv1 <- 10000  # Default value if MarketValue is 0
+    
+    age_idx1 <- transfer_data$Age[2] - 15  # Index for first transfer
+    if (age_idx1 <= 0 || age_idx1 > nrow(avg_loss_by_age)) next  # Skip if invalid age
+    
+    # Start calculating y with the first value
+    y <- -(mv1 * avg_loss_by_age$avg_pct_loss[age_idx1])
+    
+    # Loop over the remaining years after transfers
+    for (j in 2:n_transfers) {
+      mv <- transfer_data$MarketValue[j]
+      age_idx <- transfer_data$Age[j] - 15  # Adjust the index
+      
+      if (age_idx > 0 && age_idx <= nrow(avg_loss_by_age)) {  # Ensure valid age
+        weight <- (1 / j) / discount_factor  # Calculate weight
+        y <- y + mv * avg_loss_by_age$avg_pct_loss[age_idx] * weight
+      }
+    }
+    results <- rbind(results, data.frame(global_transfer_index = transfer_index, Transfer_Value = y))
+  }
+  
+  return(results)
+}
+
+
+results = calculate_transfer(data_transfers, avg_loss_by_age2)
+```
+
+```{r}
+results <- right_join(results,data_transfers, by = "global_transfer_index")
+
+#add extra comp where he was before
+results$Comp_going <- NA
+# Identify rows where Squad is "zzzinitial value"
+zzz_rows <- which(results$Squad == "zzzinitial value")
+# Assign the Comp value of the next row to the current row in 'Comp_going'
+results$Comp_going[zzz_rows] <- results$Comp[zzz_rows + 1]
+results = results %>% mutate(Comp_from_to = paste(Comp,Comp_going,sep = "_"))
+results2 = results %>% filter(!is.na(Comp_going))# Delete players that went somewhere else not top 5 legaues
+
+#save as csv
+#write.csv(results2, "csv data/results.csv", row.names = FALSE)
+```
+
+data for the positions before that
+modify dataa
+```{r}
+dataa <- read_csv("csv data/results.csv")
+dataa = dataa %>% filter(Squad == "zzzinitial value")
+
+dataa = dataa %>% mutate(gb = ifelse(Transfer_Value <= 0, 0, 1)) %>% # If 0, then it is bad transfer
+  filter(is.na(Transfer_Value) == FALSE) #put the NA values out
+#-700000 is the median
+
+cols_to_modify <- grep("pct|percent", names(dataa), ignore.case = TRUE)
+
+# Replace NA values with 0 in identified columns (the one that are percentage)
+dataa[cols_to_modify] <- lapply(dataa[cols_to_modify], function(x) {
+  ifelse(is.na(x), 0, x)
+})
+```
+
+
+```{r}
+medians_table <- dataa %>%
+  group_by(Age) %>%
+  summarise(Median_Transfer_Value = median(Transfer_Value, na.rm = TRUE),Count = n())
+# Take the median for each age of the Transfer_Value(my metric) and look if good or bad
+
+# Add gb_age column (If a tranfer is succesfull or not)
+dataa <- dataa %>%
+  left_join(medians_table, by = "Age") %>%
+  mutate(gb_age = ifelse(Transfer_Value > Median_Transfer_Value, 1, 0))
+
+```
+
+add pca to data
+```{r}
+dataa = left_join(dataa, pca_join_age_diff2total, by = c("player_url","Season_End_Year","gb_age"))
+write.csv(dataa, "csv data/dataa.csv", row.names = FALSE)
+```
+
+data generation for single positions and all positions
+```{r}
+#data load it 
+dataa <- read_csv("csv data/dataa123.csv")
+dataa[1] <- NULL
+
+mid_data <- dataa %>% 
+  dplyr::filter(Pos %in% c("MF", "MF,FW", "DF,MF","MF,DF","FW,MF")) %>%#mid
+  dplyr::select(-c(
+    "global_transfer_index", "player_url", "Season_End_Year",
+    "Squad", "Player", "Born","gb","Median_Transfer_Value","Is_Transfer","Transfer_Group","player_market_value_euro","MarketValue","rownr","squad","count","Count","Mn_per_Start_Starts",
+    "Mn_per_Sub_Subs","Url","Pos"
+  )) %>% dplyr::mutate(
+    npxG_per_Sh_Expected = ifelse(is.na(npxG_per_Sh_Expected), 0, npxG_per_Sh_Expected),
+    G_per_SoT_Standard = ifelse(is.na(G_per_SoT_Standard), 0, G_per_SoT_Standard),
+    Dist_Standard = ifelse(is.na(Dist_Standard), 0, Dist_Standard),
+    G_per_Sh_Standard = ifelse(is.na(G_per_Sh_Standard), 0, G_per_Sh_Standard)
+  )
+
+mid_data$Age <- as.numeric(mid_data$Age)
+colnames(mid_data) <- make.names(colnames(mid_data), unique = TRUE)
+mid_data <- na.omit(mid_data)#1 away after transformations
+
+mid_data$gb_age <- as.factor(mid_data$gb_age)
+
+
+df_data <- dataa %>% 
+  dplyr::filter(Pos %in% c("DF", "DF,FW", "DF,FW","FW,DF","FW,DF")) %>%#df
+  dplyr::select(-c(
+    "global_transfer_index", "player_url", "Season_End_Year",
+    "Squad", "Player", "Born","gb","Median_Transfer_Value","Is_Transfer","Transfer_Group","player_market_value_euro","MarketValue","rownr","squad","count","Count","Mn_per_Start_Starts",
+    "Mn_per_Sub_Subs","Url","Pos"
+  )) %>% dplyr::mutate(
+    npxG_per_Sh_Expected = ifelse(is.na(npxG_per_Sh_Expected), 0, npxG_per_Sh_Expected),
+    G_per_SoT_Standard = ifelse(is.na(G_per_SoT_Standard), 0, G_per_SoT_Standard),
+    Dist_Standard = ifelse(is.na(Dist_Standard), 0, Dist_Standard),
+    G_per_Sh_Standard = ifelse(is.na(G_per_Sh_Standard), 0, G_per_Sh_Standard)
+  )
+df_data$Age <- as.numeric(df_data$Age)
+colnames(df_data) <- make.names(colnames(df_data), unique = TRUE)
+df_data <- na.omit(df_data)
+df_data$gb_age <- as.factor(df_data$gb_age)
+
+fw_data <- dataa %>% 
+  dplyr::filter(Pos %in% c("FW", "MF,FW", "DF,FW","FW,DF","FW,MF")) %>%#fw
+  dplyr::select(-c(
+    "global_transfer_index", "player_url", "Season_End_Year",
+    "Squad", "Player", "Born","gb","Median_Transfer_Value","Is_Transfer","Transfer_Group","player_market_value_euro","MarketValue","rownr","squad","count","Count","Mn_per_Start_Starts",
+    "Mn_per_Sub_Subs","Url","Pos"
+  )) %>% dplyr::mutate(
+    npxG_per_Sh_Expected = ifelse(is.na(npxG_per_Sh_Expected), 0, npxG_per_Sh_Expected),
+    G_per_SoT_Standard = ifelse(is.na(G_per_SoT_Standard), 0, G_per_SoT_Standard),
+    Dist_Standard = ifelse(is.na(Dist_Standard), 0, Dist_Standard),
+    G_per_Sh_Standard = ifelse(is.na(G_per_Sh_Standard), 0, G_per_Sh_Standard)
+  )
+fw_data$Age <- as.numeric(fw_data$Age)
+colnames(fw_data) <- make.names(colnames(fw_data), unique = TRUE)
+fw_data <- na.omit(fw_data)
+fw_data$gb_age <- as.factor(fw_data$gb_age)
+
+#train test
+
+train_data_fw <- fw_data %>%
+  group_by(gb_age) %>%
+  sample_frac(0.8)
+
+test_data_fw  <- anti_join(fw_data, train_data_fw)
+
+train_data_df <- df_data %>%
+  group_by(gb_age) %>%
+  sample_frac(0.8)
+
+test_data_df<- anti_join(df_data, train_data_df)
+
+train_data_mid <- mid_data %>%
+  group_by(gb_age) %>%
+  sample_frac(0.8)
+
+ test_data_mid <- anti_join(mid_data, train_data_mid)
+
+tot_data <- dataa %>% 
+  dplyr::filter(Pos != "GK") %>%#no gk
+  dplyr::select(-c(
+    "global_transfer_index", "player_url", "Season_End_Year",
+    "Squad", "Player", "Born","gb","Median_Transfer_Value","Is_Transfer","Transfer_Group","player_market_value_euro","MarketValue","rownr","squad","count","Count","Mn_per_Start_Starts",
+    "Mn_per_Sub_Subs","Pos","Url"
+  )) %>% dplyr::mutate(
+    npxG_per_Sh_Expected = ifelse(is.na(npxG_per_Sh_Expected), 0, npxG_per_Sh_Expected),
+    G_per_SoT_Standard = ifelse(is.na(G_per_SoT_Standard), 0, G_per_SoT_Standard),
+    Dist_Standard = ifelse(is.na(Dist_Standard), 0, Dist_Standard),
+    G_per_Sh_Standard = ifelse(is.na(G_per_Sh_Standard), 0, G_per_Sh_Standard)
+  )
+
+tot_data$Age <- as.numeric(tot_data$Age)
+colnames(tot_data) <- make.names(colnames(tot_data), unique = TRUE)
+tot_data <- na.omit(tot_data)#1 away after transformations
+
+tot_data$gb_age <- as.factor(tot_data$gb_age)
+
+train_data_tot <- tot_data %>%
+  group_by(gb_age) %>%
+  sample_frac(0.8)
+
+test_data_tot <- anti_join(tot_data, train_data_tot)
+
+```
+
+rid of age for all datasets
+```{r}
+# Remove "Age" column from datasets
+train_data_df2 <- train_data_df[, names(train_data_df) != "Age"]
+test_data_df2 <- test_data_df[, names(test_data_df) != "Age"]
+
+train_data_mid2 <- train_data_mid[, names(train_data_mid) != "Age"]
+test_data_mid2 <- test_data_mid[, names(test_data_mid) != "Age"]
+
+train_data_fw2 <- train_data_fw[, names(train_data_fw) != "Age"]
+test_data_fw2 <- test_data_fw[, names(test_data_fw) != "Age"]
+
+train_data_tot2 <- train_data_tot[, names(train_data_tot) != "Age"]
+test_data_tot2 <- test_data_tot[, names(test_data_tot) != "Age"]
+```
+
+Save all important the datasets as CSV files
+```{r}
+# write.csv(train_data_df2, "csv data/train_data_df2.csv", row.names = FALSE)
+# write.csv(test_data_df2, "csv data/test_data_df2.csv", row.names = FALSE)
+# write.csv(test_data_df2, "csv data/test_data_fw2.csv", row.names = FALSE)
+# write.csv(train_data_fw2, "csv data/train_data_fw2.csv", row.names = FALSE)
+# write.csv(train_data_mid2, "csv data/train_data_mid2.csv", row.names = FALSE)
+# write.csv(test_data_mid2, "csv data/test_data_mid2.csv", row.names = FALSE)
+# write.csv(train_data_tot2, "csv data/train_data_tot2.csv", row.names = FALSE)
+# write.csv(test_data_tot2, "csv data/test_data_tot2.csv", row.names = FALSE)
+# #
+# write.csv(df_data, "csv data/df_data.csv", row.names = FALSE)
+# write.csv(mid_data, "csv data/mid_data.csv", row.names = FALSE)
+# write.csv(fw_data, "csv data/fw_data.csv", row.names = FALSE)
+# write.csv(tot_data, "csv data/tot_data.csv", row.names = FALSE)
+
+```

@@ -1,0 +1,566 @@
+---
+title: "Random Forest"
+author: "Justin Lampman"
+date: "2025-02-19"
+output: html_document
+---
+
+For the code to work without loading any data previously, you first have to run PCA.Rmd, then you have to run Daten.Rmd to have all data. To run the models you have to run rf.Rmd. For the plots you need to run plots.Rmd.
+
+To load all data without running the code, you can use the csv files in the csv data folder and run them in the second chunk. The models are saved in the models folder. The plots are saved in the plots folder. The data is saved in the data folder.
+
+Packages
+```{r}
+library(worldfootballR)
+library(tidyverse)
+library(ggrepel)
+library(stringi)
+library(stringr)
+library(worldfootballR)
+library(corrr)
+library(ggcorrplot)
+library(factoextra)
+library(purrr)
+library(vivid)
+library(scales)
+library(reshape2)  # For data transformation
+library(viridis)
+library(ranger)
+library(Metrics)
+mapping = read.csv("csv data/names.csv")# Mapping for clubs of transfermakt data and fbref data
+```
+
+If you do not want to run the code, you can also use the csv files in the csv data folder and load these to have all the data, to run the models and get the plots
+```{r}
+pca_join_age_diff2total <- read.csv("csv data/pca.csv")
+dataa <- read_csv("csv data/dataa123.csv")%>% select(-1)
+#
+rfreg_tot_vivi2 <- read.csv("csv data/rfreg_tot_vivi2.csv")
+rfbin_tot_vivi2 <- read.csv("csv data/rfbin_tot_vivi2.csv")
+rfreg_fw_vivi2 <- read.csv("csv data/rfreg_fw_vivi2.csv")
+rfbin_fw_vivi2 <- read.csv("csv data/rfbin_fw_vivi2.csv")
+rfreg_df_vivi2 <- read.csv("csv data/rfreg_df_vivi2.csv")
+rfbin_df_vivi2 <- read.csv("csv data/rfbin_df_vivi2.csv")
+rfreg_mid_vivi2 <- read.csv("csv data/rfreg_mid_vivi2.csv")
+rfbin_mid_vivi2 <- read.csv("csv data/rfbin_mid_vivi2.csv")
+#
+data_butlook <- read_csv("csv data/data.csv")
+#
+mid_data2reg <- read.csv("csv data/mid_data2reg.csv")
+df_data2reg <- read.csv("csv data/df_data2reg.csv")
+tot_data2reg <- read.csv("csv data/vtot_data2reg.csv")
+fw_data2reg <- read.csv("csv data/fw_data2reg.csv")
+fw_data2bin <- read.csv("csv data/fw_data2bin.csv")
+mid_data2bin <- read.csv("csv data/mid_data2bin.csv")
+df_data2bin <- read.csv("csv data/df_data2bin.csv")
+tot_data2bin <- read.csv("csv data/tot_data2bin.csv")
+#
+combined_varimp_bin2 <- read.csv("csv data/combined_varimp_bin2.csv")
+combined_varimp_reg2 <- read.csv("csv data/combined_varimp_reg2.csv")
+#
+regbin <- read.csv("csv data/regbin.csv")
+#
+rfbin_tot_vivi2 <- read.csv("csv data/rfbin_tot_vivi2.csv")
+rfreg_fw_vivi2 <- read.csv("csv data/rfreg_fw_vivi2.csv")
+rfbin_fw_vivi2 <- read.csv("csv data/rfbin_fw_vivi2.csv")
+rfreg_df_vivi2 <- read.csv("csv data/rfreg_df_vivi2.csv")
+rfbin_df_vivi2 <- read.csv("csv data/rfbin_df_vivi2.csv")
+rfreg_mid_vivi2 <- read.csv("csv data/rfreg_mid_vivi2.csv")
+rfbin_mid_vivi2 <- read.csv("csv data/rfbin_mid_vivi2.csv")
+#
+train_data_df2 <- read.csv("csv data/train_data_df2.csv")
+test_data_df2 <- read.csv("csv data/test_data_df2.csv")
+test_data_fw2 <- read.csv("csv data/test_data_fw2.csv") 
+train_data_fw2 <- read.csv("csv data/train_data_fw2.csv")
+train_data_mid2 <- read.csv("csv data/train_data_mid2.csv")
+test_data_mid2 <- read.csv("csv data/test_data_mid2.csv")
+train_data_tot2 <- read.csv("csv data/train_data_tot2.csv")
+test_data_tot2 <- read.csv("csv data/test_data_tot2.csv")
+#
+df_data <- read.csv("csv data/df_data.csv")
+mid_data <- read.csv("csv data/mid_data.csv")
+fw_data <- read.csv("csv data/fw_data.csv")
+tot_data <- read.csv("csv data/tot_data.csv")
+#
+rfbin_fw2 <- readRDS("models/rfbin_fw2.rds")
+rfbin_df2 <- readRDS("models/rfbin_df2.rds")
+rfbin_mid2 <- readRDS("models/rfbin_mid2.rds")
+rfbin_tot2 <- readRDS("models/rfbin_tot2.rds")
+rfreg_fw2 <- readRDS("models/rfreg_fw2.rds")
+rfreg_df2 <- readRDS("models/rfreg_df2.rds")
+rfreg_mid2 <- readRDS("models/rfreg_mid2.rds")
+rfreg_tot2 <- readRDS("models/rfreg_tot2.rds")
+# load these for the data from Transfermarkt and Fbref
+all_val <- read.csv("csv data/all_val.csv")
+final_combined_data <- read.csv("csv data/final_combined_data.csv")
+joined_data = read.csv("csv data/team_data_pca.csv")
+```
+
+Define helper function for Variable Importance and vivi Matrix
+```{r}
+run_vivi_analysis <- function(rf_model, data, response) {
+  vars <- head(sort(rf_model$variable.importance, decreasing = TRUE), 40)  # Top 40 important vars.
+  
+  vivi_matrix <- vivi(
+    data = data,
+    fit = rf_model,
+    response = response,
+    vars = names(vars)
+  )
+  
+  return(vivi_matrix)
+}
+```
+
+helper function numerische variable modell
+```{r}
+perform_grid_search_numeric <- function(mtry_values, num_trees_values, train_data, test_data, target_variable) {
+  
+  # Ensure target variable exists
+  if (!(target_variable %in% colnames(train_data))) {
+    stop(paste("Error: Target variable", target_variable, "not found in training data"))
+  }
+  
+  if (!(target_variable %in% colnames(test_data))) {
+    stop(paste("Error: Target variable", target_variable, "not found in test data"))
+  }
+
+  # Remove `gb_age` if it exists
+  if ("gb_age" %in% colnames(train_data)) {
+    train_data <- train_data %>% dplyr::select(-gb_age)
+  }
+  if ("gb_age" %in% colnames(test_data)) {
+    test_data <- test_data %>% dplyr::select(-gb_age)
+  }
+
+  # Ensure both datasets have the same features
+  common_columns <- intersect(colnames(train_data), colnames(test_data))
+  train_data <- train_data[, common_columns]
+  test_data <- test_data[, common_columns]
+
+  # Move target variable to the first column
+  train_data <- train_data %>% select(target_variable, everything())
+  test_data <- test_data %>% select(target_variable, everything())
+
+  # Convert target variable to numeric
+  train_data[[target_variable]] <- as.numeric(train_data[[target_variable]])
+  test_data[[target_variable]] <- as.numeric(test_data[[target_variable]])
+
+  # Remove target variable from features before training
+  train_features <- train_data %>% select(-target_variable)
+  test_features <- test_data %>% select(-target_variable)
+
+  # Initialize results dataframe
+  tuning_results <- data.frame(
+    mtry = integer(),
+    num_trees = integer(),
+    mse = numeric(),
+    rmse = numeric(),
+    mae = numeric(),
+    r_squared = numeric()
+  )
+
+  # Perform grid search
+  for (mtry in mtry_values) {
+    for (num_trees in num_trees_values) {
+      
+      # Train Random Forest regression model
+      rf_model <- ranger(
+        formula = as.formula(paste(target_variable, "~ .")),
+        data = train_data,
+        num.trees = num_trees,
+        mtry = mtry,
+        importance = 'impurity',
+        seed = 42
+      )
+      
+      # Make predictions
+      predictions <- predict(rf_model, data = test_features)$predictions
+      actual <- test_data[[target_variable]]
+
+      # Compute regression metrics
+      mse_value <- mse(actual, predictions)
+      rmse_value <- rmse(actual, predictions)
+      mae_value <- mae(actual, predictions)
+      r_squared_value <- cor(actual, predictions)^2  # R2 score
+      
+      # Store results
+      new_row <- data.frame(
+        mtry = mtry,
+        num_trees = num_trees,
+        mse = mse_value,
+        rmse = rmse_value,
+        mae = mae_value,
+        r_squared = r_squared_value
+      )
+      
+      tuning_results <- rbind(tuning_results, new_row)
+    }
+  }
+
+  return(tuning_results)
+}
+
+```
+
+helper function best model and performance with rf with binary model
+```{r}
+# Define hyperparameter grids
+mtry_values <- c( 50, 70, 90, 100, 110, 120, 130, 151,179)#
+num_trees_values <- c( 50, 100, 200, 300, 400, 500, 1000)
+
+
+perform_grid_search <- function(mtry_values, num_trees_values, train_data, test_data) {
+  
+  # Drop Transfer_Value if present
+  if ("Transfer_Value" %in% colnames(train_data)) {
+    train_data <- train_data %>% select(-Transfer_Value)
+  }
+  if ("Transfer_Value" %in% colnames(test_data)) {
+    test_data <- test_data %>% select(-Transfer_Value)
+  }
+
+  # Ensure that target variable is a factor
+  train_data$gb_age <- as.factor(train_data$gb_age)
+  test_data$gb_age <- as.factor(test_data$gb_age)
+
+  # Prepare metrics data frame
+  tuning_results <- data.frame(
+    mtry = integer(),
+    num_trees = integer(),
+    accuracy = numeric(),
+    auc = numeric(),
+    predicted_0_actual_0 = integer(),
+    predicted_1_actual_1 = integer(),
+    predicted_0_actual_1 = integer(),
+    predicted_1_actual_0 = integer()
+  )
+
+  # Define class and overall metrics manually
+  class_metrics_names <- c(
+    "Sensitivity", "Specificity", "Pos Pred Value", "Neg Pred Value",
+    "Precision", "Recall", "F1", "Prevalence", "Detection Rate",
+    "Detection Prevalence", "Balanced Accuracy"
+  )
+  overall_metrics_names <- c(
+    "Accuracy", "Kappa", "AccuracyLower", "AccuracyUpper",
+    "AccuracyNull", "AccuracyPValue", "McnemarPValue"
+  )
+
+  for (metric_name in c(class_metrics_names, overall_metrics_names)) {
+    tuning_results[[metric_name]] <- numeric()
+  }
+
+  # Grid search loop for Random Forest hyperparameters
+  for (mtry in mtry_values) {
+    for (num_trees in num_trees_values) {
+
+      #Train models
+      rf_model <- ranger(
+        formula = gb_age ~ .,
+        data = train_data,
+        num.trees = num_trees,
+        mtry = mtry,
+        importance = 'impurity',
+        probability = TRUE,
+        seed = 42
+      )
+
+      # Predict probabilities and classes
+      predictions <- predict(rf_model, data = test_data)
+      predicted_classes <- factor(ifelse(predictions$predictions[, "1"] >= 0.5, "1", "0"), levels = c("0", "1"))
+      actual <- factor(test_data$gb_age, levels = c("0", "1"))
+
+      # Confusion matrix 
+      conf_matrix <- caret::confusionMatrix(predicted_classes, actual)
+
+      # Do AUC
+      positive_probs <- predictions$predictions[, "1"]
+      binary_roc <- pROC::roc(response = actual, predictor = positive_probs, levels = c("0", "1"))
+      auc_value <- pROC::auc(binary_roc)
+
+      # Extract metrics
+      overall_metrics <- conf_matrix$overall
+      class_metrics <- conf_matrix$byClass
+      confusion_counts <- as.vector(conf_matrix$table)
+
+      new_row <- data.frame(
+        mtry = mtry,
+        num_trees = num_trees,
+        accuracy = overall_metrics["Accuracy"],
+        auc = auc_value,
+        predicted_0_actual_0 = confusion_counts[1],
+        predicted_1_actual_1 = confusion_counts[4],
+        predicted_0_actual_1 = confusion_counts[3],
+        predicted_1_actual_0 = confusion_counts[2]
+      )
+
+      # Add metrics
+      for (metric_name in class_metrics_names) {
+        new_row[[metric_name]] <- ifelse(metric_name %in% names(class_metrics), class_metrics[[metric_name]], NA)
+      }
+      for (metric_name in overall_metrics_names) {
+        new_row[[metric_name]] <- ifelse(metric_name %in% names(overall_metrics), overall_metrics[[metric_name]], NA)
+      }
+
+      tuning_results <- rbind(tuning_results, new_row)
+    }
+  }
+
+  return(tuning_results)
+}
+```
+
+helper function for best hyperparameters
+```{r}
+get_best_hyperparameters <- function(df) {
+
+  filtered_df <- df
+  
+  # Check if there are valid rows
+  if (nrow(filtered_df) > 0) {
+    if ("accuracy" %in% colnames(filtered_df)) {
+      # select the row with the highest accuracy
+      row_df <- filtered_df[which.max(filtered_df$accuracy), ]
+    } else if ("rmse" %in% colnames(filtered_df)) {
+      #  select the row with the lowest RMSE
+      row_df <- filtered_df[which.min(filtered_df$rmse), ]
+    } else {
+      # Ifaccuracy and RMSE dont exist, return NA
+      return(data.frame(Best_mtry = NA, Best_num_trees = NA))
+    }
+    
+    # Extract optimal hyperparameters
+    best_mtry <- row_df$mtry
+    best_num_trees <- row_df$num_trees
+  } else {
+    # If no valid rows exist, NA
+    best_mtry <- NA
+    best_num_trees <- NA
+  }
+  
+  return(data.frame(Best_mtry = best_mtry, Best_num_trees = best_num_trees))
+}
+
+```
+
+helper function for training the model with hyperparam
+```{r}
+train_ranger_model_bin <- function(num_trees, mtry,data) {
+  if (!is.na(num_trees) & !is.na(mtry)) {
+    model <- ranger(
+      formula = gb_age ~ ., 
+      data = data, 
+      num.trees = num_trees, 
+      mtry = mtry, 
+      importance = 'impurity', 
+      probability = TRUE,
+      seed = 42
+    )
+    return(model)
+  } else {
+    return(NULL)  
+  }
+}
+
+train_ranger_model_reg <- function(num_trees, mtry,data) {
+  if (!is.na(num_trees) & !is.na(mtry)) {
+    model <- ranger(
+      formula = Transfer_Value ~ ., 
+      data = data, 
+      num.trees = num_trees, 
+      mtry = mtry, 
+      importance = 'impurity', 
+      probability = FALSE,
+      seed = 42
+    )
+    return(model)
+  } else {
+    return(NULL)  
+  }
+}
+
+```
+
+
+no age and not market value and gb age in it do hyperparameter tuning and all
+```{r}
+# Perform grid search for classification 
+rf_result_df_bin2  <- perform_grid_search(mtry_values, num_trees_values, train_data_df2, test_data_df2)
+rf_result_mid_bin2 <- perform_grid_search(mtry_values, num_trees_values, train_data_mid2, test_data_mid2)
+rf_result_fw_bin2  <- perform_grid_search(mtry_values, num_trees_values, train_data_fw2, test_data_fw2)
+rf_result_tot_bin2 <- perform_grid_search(mtry_values, num_trees_values, train_data_tot2, test_data_tot2)
+
+# Perform grid search for regression models 
+rf_result_fw_reg2  <- perform_grid_search_numeric(mtry_values, num_trees_values, train_data_fw2, test_data_fw2, "Transfer_Value")
+rf_result_mid_reg2 <- perform_grid_search_numeric(mtry_values, num_trees_values, train_data_mid2, test_data_mid2, "Transfer_Value")
+rf_result_df_reg2  <- perform_grid_search_numeric(mtry_values, num_trees_values, train_data_df2, test_data_df2, "Transfer_Value")
+
+rf_result_tot_reg2 <- perform_grid_search_numeric(
+  mtry_values, num_trees_values,
+  train_data_tot2[, names(train_data_tot2) != "gb_age"],
+  test_data_tot2[, names(test_data_tot2) != "gb_age"],  
+  "Transfer_Value"
+)
+
+fw_data2reg <- fw_data[, !(names(fw_data) %in% c("gb_age", "Age"))]
+mid_data2reg <- mid_data[, !(names(mid_data) %in% c("gb_age", "Age"))]
+df_data2reg <- df_data[, !(names(df_data) %in% c("gb_age", "Age"))]
+tot_data2reg <- tot_data[, !(names(tot_data) %in% c("gb_age", "Age"))]
+
+fw_data2bin <- fw_data[, !(names(fw_data) %in% c("Transfer_Value", "Age"))]
+mid_data2bin <- mid_data[, !(names(mid_data) %in% c("Transfer_Value", "Age"))]
+df_data2bin <- df_data[, !(names(df_data) %in% c("Transfer_Value", "Age"))]
+tot_data2bin <- tot_data[, !(names(tot_data) %in% c("Transfer_Value", "Age"))]
+# Need for vivd later, for models on all data
+
+#####################
+#hyperparameter tuning
+
+best_df_reg2 <- get_best_hyperparameters(rf_result_df_reg2)
+best_mid_reg2 <- get_best_hyperparameters(rf_result_mid_reg2)
+best_fw_reg2 <- get_best_hyperparameters(rf_result_fw_reg2)
+best_tot_reg2 <- get_best_hyperparameters(rf_result_tot_reg2)
+best_df_bin2 <- get_best_hyperparameters(rf_result_df_bin2)
+best_mid_bin2 <- get_best_hyperparameters(rf_result_mid_bin2)
+best_fw_bin2 <- get_best_hyperparameters(rf_result_fw_bin2)
+best_tot_bin2 <- get_best_hyperparameters(rf_result_tot_bin2)
+
+#####################
+#fit models after hyperparameter tuning
+
+rfbin_fw2 <- train_ranger_model_bin(400, 110, fw_data2bin)
+rfbin_df2 <- train_ranger_model_bin(300, 120, df_data2bin)
+rfbin_mid2 <- train_ranger_model_bin(400, 100, mid_data2bin)
+rfbin_tot2 <- train_ranger_model_bin(400, 70, tot_data2bin)
+
+rfreg_fw2 <- train_ranger_model_reg(400, 90,fw_data2reg)
+rfreg_df2 <- train_ranger_model_reg(100, 90,df_data2reg)
+rfreg_mid2 <- train_ranger_model_reg(500, 130,mid_data2reg)
+rfreg_tot2 <- train_ranger_model_reg(500, 70,tot_data2reg)
+#########
+#run vivi heatmaps
+
+rfbin_fw_vivi2 <- run_vivi_analysis(rfbin_fw2, fw_data2bin, "gb_age")
+rfbin_df_vivi2 <- run_vivi_analysis(rfbin_df2, df_data2bin, "gb_age")
+rfbin_mid_vivi2 <- run_vivi_analysis(rfbin_mid2, mid_data2bin, "gb_age")
+rfbin_tot_vivi2 <- run_vivi_analysis(rfbin_tot2, tot_data2bin, "gb_age")
+
+# Regression models 
+rfreg_fw_vivi2 <- run_vivi_analysis(rfreg_fw2, fw_data2reg, "Transfer_Value")
+rfreg_df_vivi2 <- run_vivi_analysis(rfreg_df2, df_data2reg, "Transfer_Value")
+rfreg_mid_vivi2 <- run_vivi_analysis(rfreg_mid2, mid_data2reg, "Transfer_Value")
+rfreg_tot_vivi2 <- run_vivi_analysis(rfreg_tot2, tot_data2reg, "Transfer_Value")
+
+###
+```
+
+helper functionvariable importance for both models bin/reg and the varimp function
+```{r}
+### Function to Compute and Combine Variable Importance for Four Models reg and bin
+compute_var_importance <- function(model_fw, model_mid, model_df, model_tot, group_name) {
+
+  varimp_fw <- as.data.frame(sort(model_fw$variable.importance, decreasing = TRUE))
+  varimp_mid <- as.data.frame(sort(model_mid$variable.importance, decreasing = TRUE))
+  varimp_df <- as.data.frame(sort(model_df$variable.importance, decreasing = TRUE))
+  varimp_tot <- as.data.frame(sort(model_tot$variable.importance, decreasing = TRUE))
+
+  colnames(varimp_fw) <- c("Importance_fw")
+  colnames(varimp_mid) <- c("Importance_mid")
+  colnames(varimp_df) <- c("Importance_df")
+  colnames(varimp_tot) <- c("Importance_tot")
+
+  # Create ranks for each model
+  varimp_fw$Rank_fw <- rank(-varimp_fw$Importance_fw)
+  varimp_mid$Rank_mid <- rank(-varimp_mid$Importance_mid)
+  varimp_df$Rank_df <- rank(-varimp_df$Importance_df)
+  varimp_tot$Rank_tot <- rank(-varimp_tot$Importance_tot)
+
+  # Add variable names to each data frame
+  varimp_fw$Variable <- rownames(varimp_fw)
+  varimp_mid$Variable <- rownames(varimp_mid)
+  varimp_df$Variable <- rownames(varimp_df)
+  varimp_tot$Variable <- rownames(varimp_tot)
+
+  # Join all four results together by the variable names
+  combined_varimp <- full_join(varimp_fw, varimp_mid, by = "Variable") %>%
+    full_join(varimp_df, by = "Variable") %>%
+    full_join(varimp_tot, by = "Variable") %>%
+    dplyr::mutate(
+      Rank_Avg = (Rank_fw + Rank_mid + Rank_df + Rank_tot) / 4,  # Avrg rank across models
+      Rank_Max = pmax(Rank_fw, Rank_mid, Rank_df, Rank_tot, na.rm = TRUE), 
+      Rank_Min = pmin(Rank_fw, Rank_mid, Rank_df, Rank_tot, na.rm = TRUE)  
+    )
+  
+  print(paste("Variable Importance for:", group_name))
+  View(combined_varimp)
+  
+  return(combined_varimp)
+}
+```
+
+variable imprtance table for binary classification of new models
+```{r}
+combined_varimp_bin2 <- compute_var_importance(rfbin_fw2, rfbin_mid2, rfbin_df2, rfbin_tot2,"bin names")
+
+combined_varimp_reg2 <- compute_var_importance(rfreg_fw2, rfreg_mid2, rfreg_df2, rfreg_tot2,"reg names")
+
+regbin = left_join(combined_varimp_reg2 %>%
+  select(Variable,Rank_tot),combined_varimp_bin2 %>%
+  select(Variable,Rank_tot), by = "Variable")
+cor(regbin$Rank_tot.x, regbin$Rank_tot.y, use = "complete.obs")
+
+```
+
+heatmap comp_from_to 
+Not int work, extra plot
+```{r}
+heatmap_data = pdp_comp %>%
+  separate(Comp_from_to, into = c("Comp_from", "Comp_to"), sep = "_")
+
+ggplot(heatmap_data, aes(x = Comp_from, y = Comp_to, fill = yhat)) +
+  geom_tile() +
+  geom_text(aes(label = round(yhat, 4)), color = "white", size = 4) +
+  scale_fill_viridis_c(option = "magma") +  # Color scale
+  labs(title = "Partial Dependence Heatmap: Comp vs Comp_going",
+       x = "from",
+       y = "to",
+       fill = "Response") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+Save all the important datasets as CSV files
+```{r}
+# write.csv(mid_data2reg, "csv data/mid_data2reg.csv", row.names = FALSE)
+# write.csv(df_data2reg, "csv data/df_data2reg.csv", row.names = FALSE)
+# write.csv(tot_data2reg, "csv data/vtot_data2reg.csv", row.names = FALSE)
+# write.csv(fw_data2reg, "csv data/fw_data2reg.csv", row.names = FALSE)
+# write.csv(fw_data2bin, "csv data/fw_data2bin.csv", row.names = FALSE)
+# write.csv(mid_data2bin, "csv data/mid_data2bin.csv", row.names = FALSE)
+# write.csv(df_data2bin, "csv data/df_data2bin.csv", row.names = FALSE)
+# write.csv(tot_data2bin, "csv data/tot_data2bin.csv", row.names = FALSE)
+# #
+# write.csv(combined_varimp_bin2, "csv data/combined_varimp_bin2.csv", row.names = FALSE)
+# write.csv(combined_varimp_reg2, "csv data/combined_varimp_reg2.csv", row.names = FALSE)
+# write.csv(regbin, "csv data/regbin.csv", row.names = FALSE)
+# #models
+# saveRDS(rfbin_fw2, file = "models/rfbin_fw2.rds")
+# saveRDS(rfbin_df2, file = "models/rfbin_df2.rds")
+# saveRDS(rfbin_mid2, file = "models/rfbin_mid2.rds")
+# saveRDS(rfbin_tot2, file = "models/rfbin_tot2.rds")
+# saveRDS(rfreg_fw2, file = "models/rfreg_fw2.rds")
+# saveRDS(rfreg_df2, file = "models/rfreg_df2.rds")
+# saveRDS(rfreg_mid2, file = "models/rfreg_mid2.rds")
+# saveRDS(rfreg_tot2, file = "models/rfreg_tot2.rds")
+# #
+# write.csv(rfreg_tot_vivi2, "csv data/rfreg_tot_vivi2.csv")
+# write.csv(rfbin_tot_vivi2, "csv data/rfbin_tot_vivi2.csv")
+# write.csv(rfreg_fw_vivi2, "csv data/rfreg_fw_vivi2.csv")
+# write.csv(rfbin_fw_vivi2, "csv data/rfbin_fw_vivi2.csv")
+# write.csv(rfreg_df_vivi2, "csv data/rfreg_df_vivi2.csv")
+# write.csv(rfbin_df_vivi2, "csv data/rfbin_df_vivi2.csv")
+# write.csv(rfreg_mid_vivi2, "csv data/rfreg_mid_vivi2.csv")
+# write.csv(rfbin_mid_vivi2, "csv data/rfbin_mid_vivi2.csv")
+```
